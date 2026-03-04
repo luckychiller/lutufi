@@ -216,7 +216,87 @@ Lutufi is organized into four principal layers, each with clearly defined respon
 
 ### 7.2 Core Language Decision
 
-The core engine will be implemented in either Rust or C++, with the final decision informed by pre-development research into the relative advantages of each for Lutufi's specific use case. Both languages offer the performance characteristics needed for large-scale inference (zero-cost abstractions, fine-grained memory control, vectorization opportunities). Rust offers additional safety guarantees (memory safety without garbage collection, fearless concurrency) that may prove valuable for a library that will be used in sensitive applications. C++ offers a more mature ecosystem of numerical and graph libraries. Python bindings will be provided via PyO3 (for Rust) or pybind11 (for C++), ensuring that the primary user interface is Python while the computational core runs at native speed.
+**Decision: Rust with PyO3 FFI**
+
+After extensive evaluation, Lutufi commits to **Rust** as the core implementation language with Python bindings via **PyO3**. This decision is based on detailed technical analysis across six critical dimensions:
+
+**1. FFI Strategy (PyO3)**
+PyO3 provides native Rust-Python integration without C++ intermediaries:
+- Zero-cost abstraction: Python calls translate directly to Rust with minimal overhead
+- Type safety: Compile-time checking of Python API conformance prevents runtime binding errors
+- Ergonomic macros: `#[pyclass]` and `#[pymethods]` attributes generate clean, maintainable binding code
+- NumPy integration: `numpy` crate enables zero-copy array sharing between Python and Rust
+- Maturin build system: Streamlined wheel generation for PyPI distribution across platforms
+
+**2. Memory Model (Ownership/Safety)**
+Rust's ownership system eliminates entire classes of bugs critical for probabilistic computation:
+- Memory safety without garbage collection: No GC pauses during long-running inference
+- Compile-time guarantees: Borrow checker prevents use-after-free, double-free, and data races at compile time
+- Deterministic destruction: RAII pattern ensures resources clean up predictably
+- Safe concurrency: Ownership tracking makes thread-safety violations compile-time errors, not runtime crashes
+- Unsafe code isolation: Only ~5% of code expected to use `unsafe` blocks, concentrated in low-level numerical kernels
+
+**3. Concurrency Approach (Async/Parallel)**
+Rust's concurrency model is uniquely suited to inference workloads:
+- Fearless concurrency: Type system distinguishes `Send` (safe to move between threads) and `Sync` (safe to share between threads) types
+- Rayon for data parallelism: `par_iter()` enables effortless parallelization of factor operations with work-stealing scheduling
+- Async support: `tokio` runtime for I/O-bound operations (model loading, distributed inference)
+- Lock-free structures: `crossbeam` crate provides wait-free queues and channels for high-contention message passing
+- GPU integration: `rust-gpu` and `cust` crates for CUDA/ROCm bindings without C++ wrappers
+
+**4. Build System (Cargo)**
+Cargo addresses pain points that slow C++ development:
+- Declarative dependencies: `Cargo.toml` specifies exact versions with semver constraints
+- Reproducible builds: `Cargo.lock` ensures identical builds across environments
+- Cross-compilation: Native support for building Windows/macOS/Linux binaries from any host
+- Test integration: `cargo test` runs unit, integration, and documentation tests with coverage reporting
+- Documentation: `cargo doc` generates API docs with type-linked cross-references
+- Workspace management: Multi-crate project organization for core/ffi/python/cli separation
+
+**5. Ecosystem (crates.io)**
+While younger than C++, Rust's scientific ecosystem has reached maturity for Lutufi's needs:
+- Linear algebra: `nalgebra` (statically-sized), `ndarray` (dynamically-sized), with BLAS/LAPACK bindings
+- Graph algorithms: `petgraph` provides efficient graph representations and algorithms
+- Sparse matrices: `sprs` for CSR/CSC formats with sparse BLAS operations
+- Statistics: `statrs` for distributions, `argmin` for optimization
+- Serialization: `serde` with `bincode` for fast binary model serialization
+- Logging: `tracing` for structured, contextual logging with async support
+
+**6. Why Rust Beats C++ for Lutufi**
+
+| Dimension | Rust Advantage | C++ Limitation |
+|-----------|---------------|----------------|
+| Memory safety | Compile-time guarantees | Manual management, subtle bugs |
+| Concurrency | Type-safe parallelism | Data races, mutex errors |
+| Build system | Cargo simplicity | CMake complexity, header management |
+| Debugging | Ownership errors at compile time | Use-after-free at runtime |
+| Contributor onboarding | Clear ownership rules | Years to master safe patterns |
+| Deployment | Static binaries, no runtime | Library dependencies, ABI issues |
+| Python integration | Native PyO3, no intermediaries | pybind11 requires C++ expertise |
+
+The C++ ecosystem advantage (Eigen, Boost) is mitigated by Rust's FFI capabilities—we can call C++ libraries when necessary while maintaining Rust's safety for new code. The learning curve is offset by reduced debugging time and safer concurrent inference implementations.
+
+**Minimum Viable Version (Lutufi 0.1.0)**
+
+Lutufi 0.1.0 will be released between **months 8-10** of the development timeline, providing funders with their first working code deliverable:
+
+**Scope of 0.1.0:**
+- Core data model: Factor graph representation with sparse adjacency
+- Basic inference: Variable elimination and junction tree for exact inference
+- Approximate inference: Loopy belief propagation with convergence monitoring
+- Model construction: Python API for building Bayesian networks and Markov random fields
+- Data import: CSV, NetworkX, pandas DataFrame integration
+- Basic visualization: Network structure plotting via matplotlib
+- Test suite: 100+ unit tests with analytical ground truth validation
+
+**What funders will see:**
+- Working Python package installable via `pip install lutufi`
+- Jupyter notebook examples demonstrating inference on sample networks
+- Performance benchmarks vs. pgmpy showing 10-100x speedup on large networks
+- Documentation with 10+ worked examples across epidemiology and finance
+- Continuous integration with 90%+ test coverage
+
+This MVP demonstrates core technical viability and provides a foundation for community feedback before the full feature set (causal inference, dynamics, extensive example library) is developed in subsequent phases.
 
 ### 7.3 Inference Methodology
 
@@ -226,7 +306,7 @@ Lutufi's inference engine supports multiple algorithmic approaches, selected bas
 - **Approximate inference** via loopy belief propagation (for models with cycles), Markov Chain Monte Carlo methods (Gibbs sampling, Metropolis-Hastings) for general models, and variational inference for large-scale models where sampling is too slow. Each approximate method comes with documented convergence guarantees and error characterization.
 - **Causal inference** via do-calculus, implementing the three rules of do-calculus (insertion/deletion of observations, action/observation exchange, insertion/deletion of actions) to determine identifiability and compute interventional distributions.
 
-### 7.4 Handling the DAG Constraint
+### 7.4 Handling the DAG Constraint: Multi-Representation Architecture
 
 The fundamental tension between Bayesian networks (which require DAGs) and social networks (which are typically cyclic and undirected) is resolved through Lutufi's support for multiple graphical model formulations:
 
@@ -234,6 +314,50 @@ The fundamental tension between Bayesian networks (which require DAGs) and socia
 - Undirected social structures (friendship networks, collaboration networks) are modeled as Markov random fields or factor graphs.
 - Mixed structures are decomposed into components that are individually tractable, with factor graphs serving as the unifying representation when needed.
 - The user is guided toward the appropriate formulation by Lutufi's documentation and, where possible, by automated analysis of the network's structural properties.
+
+**The Hardest Conceptual Problem: Cycles in Social Networks**
+
+Real social and economic networks are filled with cycles—mutual friendships, reciprocal influence, feedback loops in financial systems, and bidirectional trade relationships. Bayesian networks, by definition, require acyclic structures. This is not a technical limitation but a semantic one: the DAG constraint encodes a temporal or causal ordering that simply does not exist in many network contexts. Solving this problem is central to Lutufi's design.
+
+Lutufi addresses this through a **multi-representation architecture** that selects the appropriate probabilistic formalism based on the network's structural properties:
+
+**Bayesian Networks (DAGs)** are used when the network structure is naturally acyclic:
+- Hierarchical organizations (command flows downward)
+- Citation networks (papers cite earlier work)
+- Supply chains (goods flow from producers to consumers)
+- Causal models where temporal ordering is clear
+
+**Markov Random Fields (Undirected Graphs)** are used when relationships are symmetric:
+- Friendship networks (friendship is mutual)
+- Collaboration networks (co-authorship is undirected)
+- Spatial adjacency (contagion spreads both ways)
+- Peer influence in undirected social networks
+
+**Dynamic Bayesian Networks (DBNs)** are used when cycles represent temporal feedback:
+- Opinion dynamics (today's beliefs depend on yesterday's)
+- Financial contagion (risk propagates over time)
+- Epidemic spread (infection chains unfold over time)
+- DBNs unroll cycles into time-sliced acyclic structures
+
+**Loopy Belief Propagation on Factor Graphs** is used when cycles are unavoidable:
+- Reciprocal financial exposures (bank A owes bank B owes bank A)
+- Mutual influence relationships (A influences B influences A)
+- Loopy BP provides approximate inference with convergence guarantees
+
+**Automatic Representation Selection:**
+When a user provides a network, Lutufi analyzes its structure and recommends the appropriate representation:
+```
+if graph.is_dag():
+    use BayesianNetwork
+elif graph.is_temporal():
+    use DynamicBayesianNetwork
+elif graph.has_symmetric_relationships():
+    use MarkovRandomField
+else:
+    use FactorGraph with LoopyBP
+```
+
+This multi-representation approach ensures that the mathematical formalism matches the semantic reality of the network being modeled, rather than forcing acyclic assumptions where they do not hold.
 
 ### 7.5 Data Pipeline
 

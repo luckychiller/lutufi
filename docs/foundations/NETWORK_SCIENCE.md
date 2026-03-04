@@ -824,6 +824,8 @@ $$r = \frac{\sum_{ij} A_{ij}(k_i - \bar{k})(k_j - \bar{k})}{\sum_{ij} A_{ij}(k_i
 
 ---
 
+**Cross-Reference:** For statistical models of network structure with local dependencies, see the [Exponential Random Graph Models (ERGM)](EXPONENTIAL_RANDOM_GRAPH_MODELS.md) document. ERGMs provide a principled statistical framework for modeling dependencies between edges, extending the null model approach to networks with complex local structure.
+
 ## 12. Distance and Diameter
 
 ### 12.1 Characteristic Path Length
@@ -978,7 +980,111 @@ Lutufi's Dynamic Bayesian Network capabilities use temporal graph concepts:
 
 ---
 
-## 17. Key References
+## 17. Network Reconstruction from Partial Observations
+
+### The Problem
+
+In financial crime investigations, epidemiological contact tracing, and intelligence analysis, analysts almost never observe the complete network. They observe only a fraction of edges—perhaps 5-20% of the true network structure. The challenge is to reconstruct the unobserved portion from partial observations.
+
+**Real-world contexts:**
+- **Financial crime:** Only detected transactions are observed; the full money laundering network is hidden
+- **Epidemiology:** Only traced contacts are recorded; most disease transmissions are unobserved
+- **Intelligence:** Only intercepted communications are known; the complete covert network is concealed
+- **Social networks:** Only active users and their posts are visible; the full social graph extends far beyond
+
+### Theoretical Limits of Reconstruction
+
+There are fundamental limits to what can be reconstructed:
+
+**Information Theoretic Bounds:**
+Given n nodes and m observed edges from M total edges, the number of possible completions is combinatorial. Without additional assumptions, reconstruction is ill-posed—infinitely many networks are consistent with the observations.
+
+**Assumptions Required for Reconstruction:**
+1. **Random graph model:** Assume the network was generated from a known random graph model (ER, BA, SBM)
+2. **Observational mechanism:** Understand how edges came to be observed (uniform sampling, snowball sampling, etc.)
+3. **Node attributes:** Observed node attributes that correlate with edge formation
+4. **Temporal information:** Partial observations at multiple time points
+
+### Bayesian Approach to Network Reconstruction
+
+Lutufi's probabilistic core naturally supports Bayesian network reconstruction:
+
+**Prior over Random Graph Models:**
+```
+P(G) = Σ_model P(G | model) · P(model)
+```
+
+Where P(G | model) could be:
+- Erdős-Rényi: uniform over graphs with fixed edge count
+- Barabási-Albert: preferential attachment generating process
+- SBM: block-structured connectivity
+
+**Likelihood of Observations:**
+```
+P(G_obs | G) = Π_edges P(edge observed | edge exists in G)
+```
+
+The observation likelihood encodes the detection mechanism. For financial transactions, this might depend on reporting thresholds. For disease contacts, it depends on testing probability.
+
+**Posterior Inference over Edge Existence:**
+```
+P(edge (u,v) exists | G_obs) = Σ_G P(G | G_obs) · 1[(u,v) ∈ G]
+```
+
+This marginalizes over all possible complete networks, weighted by their posterior probability.
+
+### Connection to Lutufi's Probabilistic Core
+
+Network reconstruction maps directly to Lutufi's inference capabilities:
+
+- **Latent variable model:** Treat unobserved edges as latent binary variables
+- **Structured priors:** Use random graph models as prior distributions
+- **Posterior inference:** Compute marginal probabilities of edge existence
+- **Uncertainty quantification:** Return probability distributions, not point estimates
+
+**Example (Financial Crime):**
+```python
+# Observed suspicious transactions
+observed_edges = load_transaction_data()
+
+# Prior: scale-free network (Barabási-Albert)
+prior = BarabasiAlbertPrior(n_nodes=1000, m=5)
+
+# Reconstruct full network
+reconstructed = lutufi.reconstruct_network(
+    observed=observed_edges,
+    prior=prior,
+    observation_model=ThresholdReporting(threshold=10000)
+)
+
+# Query probability of specific edge
+prob_link = reconstructed.edge_probability('Account_A', 'Account_B')
+print(f"P(edge exists) = {prob_link:.3f}")
+
+# Query probability of path existing (for indirect links)
+prob_path = reconstructed.path_probability('Source', 'Destination')
+```
+
+### Assumptions and Limitations
+
+**Critical Assumptions:**
+1. The prior model captures the true network structure (often unknown)
+2. The observation mechanism is correctly specified
+3. The network is static during the observation period
+4. Node identities are correctly resolved across observations
+
+**Practical Limitations:**
+- Reconstruction quality degrades rapidly with observation sparsity
+- Uncertainty is high for edges far from observed nodes
+- Multiple network structures may explain the same observations equally well
+- Computational cost grows with network size
+
+**Validation:**
+Reconstructed networks should be validated against held-out observations or synthetic data where ground truth is known. Confidence in reconstruction should be reported alongside the reconstructed network.
+
+---
+
+## 18. Key References
 
 1. **Bondy, J. A., & Murty, U. S. R.** (2008). *Graph Theory*. Springer. The definitive modern text covering all aspects of graph theory with rigorous proofs.
 

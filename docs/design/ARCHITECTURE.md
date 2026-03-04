@@ -965,10 +965,110 @@ struct Partition {
 - Gossip protocols for approximate distributed inference
 - Parameter server pattern for distributed learning
 
+### Parallel Message Passing for Belief Propagation
+
+Belief propagation—both exact (on junction trees) and approximate (loopy BP)—is embarrassingly parallel at multiple levels. Lutufi employs a hybrid parallelization strategy:
+
+**1. Variable-Level Parallelism**
+Variables with disjoint neighborhoods can receive messages in parallel using graph coloring to identify independent sets.
+
+**2. Factor-Level Parallelism**
+Factor nodes can send messages to all adjacent variables in parallel. This coarse-grained approach has lower synchronization overhead.
+
+**3. Clique Tree Parallelism**
+For exact inference, cliques can be processed in parallel using wavefront scheduling—cliques at the same depth in the tree can update simultaneously.
+
+**4. Partition-Level Parallelism**
+For distributed settings, partition the graph and communicate boundary messages asynchronously.
+
+The system automatically selects the appropriate level based on graph characteristics:
+- **Low treewidth (< 10):** Clique tree parallelism for exact inference
+- **Dense with small factors:** Variable-level parallelism
+- **Large factors:** Factor-level parallelism
+- **Very large graphs (>1M nodes):** Partition-level for distributed execution
+
+**Memory and Synchronization Trade-offs:**
+
+| Level | Memory Overhead | Synchronization Pattern | Cache Locality |
+|-------|-----------------|------------------------|----------------|
+| Variable | Low | Barrier per iteration | Poor (random access) |
+| Factor | Medium | Barrier per phase | Good (factor-local) |
+| Clique Tree | Medium | Wavefront barrier | Excellent (cache-friendly) |
+| Partition | High | Async gossip | Good (partition-local) |
+
 **Future Extensions:**
 - Ray integration for Python distributed computing
 - Apache Spark bindings for large-scale learning
 - Kubernetes operators for cloud deployment
+
+---
+
+## Incremental Inference Subsystem
+
+### Problem: Dynamic Networks
+
+Real social and economic networks are not static—they evolve through time:
+- New edges form as relationships develop
+- Edges dissolve as relationships end
+- Node attributes change (beliefs, health status, financial condition)
+- Evidence accumulates from ongoing observation
+
+Recomputing inference from scratch after every change is computationally prohibitive. Lutufi implements an **incremental inference subsystem** that efficiently updates beliefs given network changes.
+
+### State Maintenance Between Updates
+
+The incremental inference subsystem maintains state across updates:
+
+**1. Versioned Beliefs**
+```rust
+struct VersionedBelief {
+    belief: ProbabilityDistribution,
+    version: u64,
+    timestamp: Instant,
+    source: UpdateSource,
+}
+```
+
+**2. Delta Tracking**
+```rust
+enum NetworkDelta {
+    EdgeAdded { source: NodeId, target: NodeId },
+    EdgeRemoved { source: NodeId, target: NodeId },
+    EvidenceAdded { variable: VariableId, value: Value },
+}
+```
+
+**3. Cached Factor Computations**
+The system caches factor computations and uses invalidation rules to determine which cached values remain valid after updates.
+
+### Triggers: Full Recomputation vs. Incremental Update
+
+| Scenario | Strategy | Correctness Guarantee |
+|----------|----------|----------------------|
+| Evidence on leaf node | Incremental | Exact |
+| Evidence on high-centrality node | Full recompute | Required for correctness |
+| Edge addition creating large clique | Full recompute | Required for efficiency |
+| Temporal evolution (DBN) | Incremental with sliding window | Approximate (bounded error) |
+
+### Correctness Guarantees
+
+- **Incremental Update Correctness:** For evidence updates on leaf nodes, incremental update produces results identical to full recomputation.
+- **Approximate Update Bounds:** When approximate updates are used, the system tracks error bounds.
+- **Rollback Capability:** Versioned beliefs enable rollback to any previous state.
+
+### API for Incremental Updates
+
+```python
+# Incremental update: new evidence
+model.add_evidence('Observation', value='observed')
+result = model.incremental_query(variables=['Risk'])
+
+# Batch updates
+delta_tracker = model.batch_updates()
+    model.add_evidence('A', 1)
+    model.add_edge('B', 'C')
+result = model.apply_updates(delta_tracker)
+```
 
 ---
 

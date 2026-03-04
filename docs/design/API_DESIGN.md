@@ -1078,6 +1078,79 @@ class QueryResult:
 
 ---
 
+## Causal vs Statistical Graph API
+
+### Design Rationale
+
+Lutufi makes an explicit distinction between **statistical** Bayesian networks (representing conditional dependencies) and **causal** Bayesian networks (representing structural causal models). This distinction is enforced at the API level to prevent accidental causal reasoning on models that do not support it.
+
+### The mark_as_causal() Method
+
+All probabilistic model classes provide a `mark_as_causal()` method that explicitly designates the model as representing a structural causal model:
+
+```python
+model = BayesianNetwork(...)
+model.mark_as_causal()  # Explicit designation as SCM
+```
+
+**What marking does:**
+- Records that the graph structure represents causal (not just statistical) relationships
+- Enables causal query methods (do-operator, counterfactuals)
+- Validates that the model meets causal requirements (e.g., no cycles in causal interpretation)
+- Freezes structural modifications (causal graphs require careful handling)
+
+**What marking does NOT do:**
+- Change the underlying graph structure
+- Automatically verify that edges actually represent causation (this remains the user's responsibility)
+- Make the model causal by fiat—incorrect causal assumptions still produce incorrect answers
+
+### Causal Operations Require Causal Models
+
+The do-operator and other causal inference methods raise `LutufiNonCausalModelError` on non-causal models:
+
+```python
+# Valid causal workflow
+model = BayesianNetwork(...)
+model.mark_as_causal()  # Explicit designation
+result = model.do("X", x=1).query("Y")  # Valid - model is causal
+
+# Invalid - raises error
+model = BayesianNetwork(...)  # Statistical only
+result = model.do("X", x=1).query("Y")
+# Raises: LutufiNonCausalModelError
+
+# Alternative for statistical models
+result = model.observational_query("Y", evidence={"X": 1})  # Valid - no causation claimed
+```
+
+### Error Handling: LutufiNonCausalModelError
+
+```python
+class LutufiNonCausalModelError(LutufiError):
+    """Raised when causal operations are attempted on non-causal models."""
+    
+    def __init__(self, operation: str, suggestion: str = None):
+        message = (
+            f"Causal operation '{operation}' requires a model designated as causal. "
+            f"Call model.mark_as_causal() after verifying your graph represents "
+            f"causal structure, or use observational_query() for statistical queries."
+        )
+        if suggestion:
+            message += f" {suggestion}"
+        super().__init__(message)
+```
+
+### API Contract
+
+| Model Type | mark_as_causal() Required | do() Supported | query() Behavior |
+|------------|---------------------------|----------------|------------------|
+| Statistical BN | No (default) | No (raises) | P(Y \| X=x) - conditional probability |
+| Causal BN | Yes | Yes | P(Y \| do(X=x)) - interventional probability |
+
+This API design prevents the common error of interpreting conditional probabilities causally—a mistake that has led to flawed research conclusions and policy recommendations.
+
+---
+
 ## Constructing Models
 
 ### Fluent API Design
@@ -1930,6 +2003,268 @@ except InsufficientMemoryError as e:
     #   - Use a machine with more RAM
     #   - Enable memory-mapped files: lutufi.config.set({'memory.mapped': True})
 ```
+
+---
+
+## Error Messages Section
+
+Lutufi provides specific, actionable error messages for common mistakes. Each error includes:
+- Clear explanation of what went wrong
+- The specific values or constraints violated
+- Suggested fixes or alternatives
+- Links to relevant documentation where applicable
+
+### 1. Cyclic Graph to BayesianNetwork
+
+**Error:**
+```
+LutufiCyclicGraphError: BayesianNetwork requires an acyclic graph.
+Detected cycle: A → B → C → A.
+Consider using MarkovRandomField or DynamicBayesianNetwork for cyclic structures.
+```
+
+**Context:** Attempted to create a Bayesian network from a graph containing cycles.
+
+**Resolution:**
+```python
+# Option 1: Use MarkovRandomField for undirected/cyclic structures
+model = MarkovRandomField(cyclic_graph)
+
+# Option 2: Use DynamicBayesianNetwork for temporal cycles
+model = DynamicBayesianNetwork(unrolled_temporal_graph)
+
+# Option 3: Break the cycle with domain knowledge
+acyclic_graph = break_cycle(graph, edge_to_remove=('C', 'A'))
+model = BayesianNetwork(acyclic_graph)
+```
+
+### 2. CPT Rows Don't Sum to One
+
+**Error:**
+```
+LutufiCPTError: CPD for 'Grade' has invalid probabilities.
+Row for parents (Difficulty=easy, Intelligence=high) sums to 0.9, expected 1.0.
+Values provided: [0.3, 0.4, 0.2]
+Hint: Use normalize=True to automatically normalize, or check your probability values.
+```
+
+**Context:** Conditional probability table row does not sum to 1.0 within tolerance.
+
+**Resolution:**
+```python
+# Option 1: Auto-normalize
+cpd = TabularCPD('Grade', 3, values=[[0.3, 0.4, 0.2]],
+                 evidence=['Difficulty', 'Intelligence'],
+                 normalize=True)
+
+# Option 2: Manual fix
+import numpy as np
+values = np.array([[0.3, 0.4, 0.2]])
+values = values / values.sum(axis=1, keepdims=True)
+```
+
+### 3. Interventional Query on Non-Causal Model
+
+**Error:**
+```
+LutufiNonCausalModelError: Causal operations (do-operator) require a model designated as causal.
+Call model.mark_as_causal() after verifying your graph represents causal structure,
+or use observational_query() for statistical queries.
+See: https://docs.lutufi.org/causal/required-designation.html
+```
+
+**Context:** Attempted causal query on statistical-only model.
+
+**Resolution:**
+```python
+# Option 1: Designate as causal (if appropriate)
+model.mark_as_causal()
+result = model.do("Treatment", x=1).query("Outcome")
+
+# Option 2: Use observational query
+result = model.observational_query("Outcome", evidence={"Treatment": 1})
+```
+
+### 4. Querying Non-Existent Variable
+
+**Error:**
+```
+LutufiVariableError: Variable 'Symptom' not found in model.
+Available variables: ['Disease', 'Test_Result', 'Treatment_Response']
+Did you mean: 'Symptom_Level'? (Similarity: 0.85)
+To add missing variables: model.add_node('Symptom', states=['present', 'absent'])
+```
+
+**Context:** Query referenced a variable not in the model, with typo suggestion.
+
+**Resolution:**
+```python
+# Check available variables
+print(model.nodes())
+
+# Add the missing variable
+model.add_node('Symptom', states=['present', 'absent'])
+model.set_cpd('Symptom', ...)
+```
+
+### 5. Evidence Out of Domain
+
+**Error:**
+```
+LutufiDomainError: Evidence 'blue' for variable 'Color' is not in the domain.
+Valid values: ['red', 'green', 'yellow']
+Character distance analysis: 'blue' → did you mean 'red'? (Levenshtein distance: 4)
+```
+
+**Context:** Observed value not in variable's defined domain.
+
+**Resolution:**
+```python
+# Check the domain
+print(model.get_cpds('Color').state_names)
+# Output: ['red', 'green', 'yellow']
+
+# Use valid evidence
+result = model.query(['Disease'], evidence={'Color': 'red'})
+```
+
+### 6. Inference Algorithm Mismatch
+
+**Error:**
+```
+LutufiInferenceError: Exact inference intractable for this model (treewidth: 47, max recommended: 25).
+Estimated memory required: 48 GB
+Estimated time: >2 hours
+
+Suggested alternatives:
+  1. Use approximate inference: algorithm='loopy_belief_propagation'
+  2. Reduce query variables (currently querying 8 variables)
+  3. Enable variable elimination heuristics: elimination_order='min_fill'
+  4. Use sampling-based inference: algorithm='gibbs_sampling', n_samples=10000
+```
+
+**Context:** Model complexity exceeds exact inference capabilities.
+
+**Resolution:**
+```python
+# Use approximate inference
+result = model.query(['Outcome'],
+                    evidence={'Symptom': 'fever'},
+                    algorithm='loopy_belief_propagation',
+                    max_iterations=100)
+```
+
+### 7. Missing Parameter Specification
+
+**Error:**
+```
+LutufiParameterError: Model contains 3 nodes without CPDs: ['Smoking', 'Cancer', 'Outcome'].
+Nodes with CPDs: ['Age', 'Gender']
+To complete the model:
+  model.set_cpd('Smoking', [0.3, 0.7])
+  model.set_cpd('Cancer', [[0.1, 0.05], [0.9, 0.95]])
+  model.set_cpd('Outcome', ...)
+```
+
+**Context:** Model incomplete—some nodes lack probability tables.
+
+**Resolution:**
+```python
+# Add missing CPDs
+model.set_cpd('Smoking', [0.3, 0.7])  # Prior
+model.set_cpd('Cancer', [[0.1, 0.05], [0.9, 0.95]])  # Conditional
+model.check_model()  # Verify completeness
+```
+
+### 8. Invalid Edge Direction
+
+**Error:**
+```
+LutufiStructureError: Edge direction A → B creates a cycle.
+Current path exists: B → C → D → A.
+Adding A → B would create: B → C → D → A → B (cycle detected).
+
+To model cyclic dependencies, consider:
+  1. Use MarkovRandomField for undirected relationships
+  2. Use DynamicBayesianNetwork for temporal feedback
+  3. Re-examine causal direction (may need expert input)
+```
+
+**Context:** Edge addition would create a cycle in a DAG.
+
+### 9. Incompatible Model Conversion
+
+**Error:**
+```
+LutufiConversionError: Cannot convert MarkovRandomField to BayesianNetwork.
+MRF contains symmetric edges that cannot be directed without introducing cycles:
+  Undirected edges: [(A, B), (B, C), (C, A)]
+
+Conversion options:
+  1. Moralization (BN → MRF) is always possible: bn.to_markov_random_field()
+  2. Chordal graph + perfect elimination ordering required for MRF → BN
+  3. Use FactorGraph as intermediate representation: mrf.to_factor_graph()
+```
+
+**Context:** Attempted invalid model conversion.
+
+### 10. Convergence Failure in Approximate Inference
+
+**Error:**
+```
+LutufiConvergenceError: Loopy belief propagation failed to converge after 100 iterations.
+Final residual: 0.0012 (tolerance: 0.0001)
+
+Diagnostic: Network contains near-deterministic relationships that may cause oscillations.
+
+Solutions:
+  1. Increase damping: damping=0.5 (current: 0.0)
+  2. Increase max_iterations: max_iterations=500
+  3. Use generalized belief propagation for improved convergence
+  4. Switch to sampling: algorithm='gibbs_sampling'
+  5. Check for deterministic nodes: model.has_deterministic_relationships()
+```
+
+**Context:** Iterative inference algorithm failed to converge.
+
+### 11. Memory Exhaustion
+
+**Error:**
+```
+LutufiMemoryError: Inference would require 124 GB of memory.
+Available system memory: 16 GB.
+
+Memory breakdown:
+  Junction tree creation: ~89 GB
+  Factor storage: ~25 GB
+  Message passing: ~10 GB
+
+Mitigation strategies:
+  1. Use approximate inference (memory: ~2 GB)
+  2. Enable memory-mapped factors: config.memory.mapped = True
+  3. Batch query processing for large evidence sets
+  4. Reduce precision: config.numerical.float_precision = 'float32'
+```
+
+**Context:** Model too large for available memory.
+
+### 12. File Format Error
+
+**Error:**
+```
+LutufiIOError: Failed to parse model file 'model.bif'.
+Parse error at line 127: Expected 'probability' keyword, found 'probabiltiy'.
+Position: 127:5 (character 4831)
+
+Common BIF syntax errors:
+  - Missing semicolon at end of probability block
+  - Undeclared variable referenced
+  - Probability values not summing to 1.0
+
+See BIF specification: https://www.cs.washington.edu/dm/bnlearn/bif.htm
+```
+
+**Context:** Model file parsing failed with specific location.
 
 ---
 

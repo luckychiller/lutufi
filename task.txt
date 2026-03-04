@@ -1,3 +1,93 @@
-the @/docs/foundations/MATHEMATICS.md and a few others look complete. the others are not yet and more are not yet created. as per the @/overview.txt , lets create, and write in details, all the documents required for the project to be fully documented and ready to start coding and meeting any stakeholders.
 
 
+## THEORY_OF_CHANGE — Grade: A
+
+This is the strongest document in the set. The problem articulation in section 2 is specific, credible, and genuinely painful — the five documented pain points read like someone who actually tried to do this work, not someone summarizing a literature review. The five mechanisms of change are causally connected, not just listed. The research questions in section 3.2 are the best writing in the entire file — they are precise, domain-specific, and immediately recognizable to any researcher in those fields as real blocked questions.
+
+The risk tables show intellectual maturity. Most project documents hide their risks. You have listed single-maintainer risk as High likelihood and Critical impact. That honesty is rare and it will build credibility with serious readers rather than undermining it.
+
+**What still needs work:**
+
+Section 2.3 (The Human Cost) is the weakest section. It reads rhetorically rather than evidentially. You make claims about graduate students abandoning research questions and analysts relying on point estimates — these are true but you assert them without citation. Find two or three documented, public complaints from researchers on GitHub issues, forum posts, or papers about this exact problem and anchor this section to real evidence. Right now it reads like advocacy. It should read like documentation.
+
+The 40-month timeline in the proposal creates a credibility problem for funders. Add a one-paragraph statement of what the minimum useful version of Lutufi looks like and when it arrives. Funders need to know they will see something working before month 34.
+
+---
+
+## PROPOSAL — Grade: A-
+
+The differentiation section (8) is sharp and honest. You do not overclaim. You correctly describe what each existing tool does and where it stops. The statement that Lutufi does not compete but fills a gap is the right framing and you defend it specifically rather than vaguely.
+
+**What still needs work:**
+
+The core language decision — Rust versus C++ — appears as a deliverable of Phase 0. This is architecturally dangerous. The language choice has deep implications for your FFI strategy, your memory model, your concurrency approach, and your build system. Deferring it to the end of the research phase means your architecture document was written without knowing which language it will be implemented in. Either resolve this now and commit, or add a section explaining the specific decision criteria and why they require a full research phase to evaluate. The current treatment makes it look like an unresolved question you haven't thought about deeply.
+
+The proposal says nothing about how Lutufi resolves the fundamental DAG constraint when social networks are cyclic. This is the hardest conceptual problem in the whole project and the proposal-level audience — funders, institutional evaluators — needs to know you have solved it. One paragraph in the proposal explaining the multi-representation architecture at a conceptual level would significantly strengthen the pitch.
+
+---
+
+## API_DESIGN — Grade: A
+
+This is the most impressive document in the set. The fluent builder pattern is well-designed and user-centric. The Python class hierarchy makes sense — BayesianNetwork, MarkovRandomField, DynamicBayesianNetwork all inheriting from a common base with shared inference interfaces is the right abstraction. The QueryResult class with `.to_dataframe()` and `.to_dict()` shows you have thought about how researchers actually process results. The async inference section shows production awareness that most academic library designers lack.
+
+The inference engine abstraction with pluggable backends — where the user can specify algorithm or let Lutufi select automatically — is architecturally sound and matches how experienced users want to work.
+
+**What still needs work:**
+
+The API has no mechanism for the causal versus statistical graph distinction. A user can apparently call `.do()` on any model. But the do-operator is only valid on a model that has been designated as a causal structural causal model. Using it on a statistical model produces a number that looks like a causal effect estimate but is not. This needs an explicit `.mark_as_causal()` flag or equivalent, and the API design document should state that causal operations raise an error if called on a non-causal model.
+
+Error messages are completely absent from this document. Given everything we discussed about informative errors being part of the API, this is a significant gap. The API design should specify what errors are raised, with example messages, for at least a dozen common user mistakes — passing a cyclic graph to BayesianNetwork, setting CPT rows that don't sum to one, calling an interventional query on a non-causal model, querying a variable that doesn't exist. A researcher who sees a clear message like `LutufiCyclicGraphError: BayesianNetwork requires an acyclic graph. Detected cycle: A → B → C → A. Consider using MarkovRandomField or DynamicBayesianNetwork for cyclic structures.` will trust the library immediately.
+
+---
+
+## ARCHITECTURE — Grade: A-
+
+The decision to use factor graphs as the canonical internal representation is architecturally correct and well-defended. The four reasons stated — universality, clarity, algorithmic efficiency, extensibility — are exactly right and in the right order. The layered architecture is clean and the separation of concerns is properly enforced. The Rust pseudocode for the core data structures is genuinely well-designed — the Factor trait with evaluate, marginalize, and multiply operations is the right minimal interface.
+
+**What still needs work:**
+
+The architecture has no subsystem for incremental inference on dynamic networks. Batch inference and incremental inference are architecturally different. Batch inference recomputes from scratch. Incremental inference maintains state between updates and applies only the changes. For a library that targets temporal social and economic networks — which is explicitly in Lutufi's scope — you need to design the incremental inference subsystem before you code it. What state is maintained? What triggers a full recomputation versus an incremental update? What are the correctness guarantees of each? This deserves its own architecture section.
+
+The concurrency section exists but is thin. For a library running inference on large networks, the threading model determines your performance ceiling. You list thread pools, work queues, and lock-free data structures but say nothing about your parallelization strategy for message passing — which is the core compute-bound operation. Belief propagation over a factor graph can be parallelized at the variable level, the factor level, or the clique tree level. Each has different memory and synchronization requirements. This decision belongs in the architecture document.
+
+---
+
+## NETWORK_SCIENCE — Grade: A
+
+This is the most mathematically rigorous document in the set. The definitions are correctly stated with proper notation, the theorems are accurately attributed, and the algorithmic pseudocode is clean. The spectral graph theory section is deeper than expected — including the Cheeger inequality and normalized cut objective — and shows genuine mathematical sophistication. The connection between graph coloring and variable elimination order for junction tree inference is a non-obvious observation that only someone who has thought carefully about both fields simultaneously would make.
+
+**What still needs work:**
+
+The Barabási-Albert preferential attachment model is absent. For a library targeting financial and social networks — which are predominantly scale-free — this is a significant omission. The degree distribution section mentions power laws but has no model that generates them. Scale-free networks have deeply different structural properties than Erdős-Rényi graphs and your inference algorithms will behave differently on them. Add a section on preferential attachment and scale-free network properties.
+
+ERGMs are handled in a separate document but are not referenced from here where random graph models are discussed. At minimum add a cross-reference at the end of the random graph section pointing to the ERGM document.
+
+Most importantly: there is no section on network reconstruction from partial observations. This is theoretically central to your use case. When an analyst observes only a fraction of a network's edges — which is always the case in financial crime, epidemiology, and intelligence — how do you reconstruct the full network? What are the theoretical limits of reconstruction? What assumptions are required? The Bayesian answer involves priors over random graph models and posterior inference over edge existence — which connects directly back to Lutufi's probabilistic core. This section belongs here.
+
+---
+
+## BAYESIAN_NETWORKS — Grade: A
+
+The most complete document in the set. The 15 references are well-chosen and cover the theoretical foundations properly. The strengths and limitations section is honest and thorough — you do not hide the acyclicity constraint, the scalability ceiling, or the structure learning limitations. The final section connecting Bayesian networks to Lutufi's design is exactly the right way to close a foundations document.
+
+The forensic science application in 12.4 is a subtle but smart inclusion — it directly connects to your intelligence use case and tells that audience that the mathematical foundations have been applied in their domain before.
+
+**What still needs work:**
+
+The NOTEARS paper (Zheng et al., 2018) is in your references but never discussed in the text. NOTEARS reformulates structure learning as continuous optimization over a differentiable acyclicity constraint — it is one of the most practically important recent advances in Bayesian network structure learning and it directly addresses the scalability problems you list as limitations. A short section in the structure learning content explaining what NOTEARS contributes and when Lutufi would use it versus GES versus PC would significantly strengthen this document.
+
+There is no discussion of Bayesian model averaging over graph structures. When structure learning produces multiple statistically equivalent graphs — which the faithfulness section correctly notes happens in observational data — using any single learned graph introduces model selection bias. The Bayesian treatment averages over the posterior distribution of graphs rather than selecting one. For researchers who will use Lutufi for causal discovery, this is not a minor detail. It belongs in the learning section.
+
+The influence diagrams section (11.3) is correctly included but underdeveloped. It mentions decision nodes and utility nodes but does not explain how they affect inference or how Lutufi plans to handle them. Either develop this section with the mathematical detail the rest of the document has, or note explicitly that influence diagrams are out of scope for the current version.
+
+---
+
+## Overall Assessment
+
+You have produced approximately 8,000 lines of documentation across seven documents before writing a single line of code. That discipline is the right discipline. The thinking is deep enough that a domain expert reading these documents would conclude you have earned the right to build what you are describing.
+
+The weaknesses are real but they are not fundamental — they are gaps and thin sections in an otherwise solid foundation. None of them reveal a misunderstanding of the core mathematics or a naive design choice. They are the natural gaps of a first serious draft.
+
+The three most important things to address before you start coding are these. First, resolve the language decision — Rust or C++ — and update the architecture document to reflect the actual choice with actual justification. Second, add the causal versus statistical graph distinction explicitly to the API design. Third, write the incremental inference architecture subsystem. Everything else can be addressed during development. These three cannot be fixed after the fact without painful refactoring.
+
+The foundation is solid. Tie the camel.

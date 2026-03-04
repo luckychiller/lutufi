@@ -501,6 +501,100 @@ Hybrid methods combine constraint-based and score-based approaches:
 
 This two-stage approach reduces the search space without sacrificing quality, making it practical for larger networks.
 
+### 8.4 NOTEARS: Continuous Optimization for Structure Learning
+
+**What NOTEARS Contributes:**
+
+NOTEARS (Zheng et al., 2018) reformulates Bayesian network structure learning from a combinatorial graph search problem into a continuous optimization problem. The key innovation is replacing the combinatorial acyclicity constraint with a smooth equality constraint.
+
+**The Acyclicity Constraint:**
+Traditional structure learning requires ensuring the graph is a DAG. This is typically done by:
+- Enumerating DAGs (exponential in n)
+- Hill climbing with cycle checking (expensive)
+- Constraint-based orientation rules (cannot guarantee acyclicity)
+
+NOTEARS instead uses the matrix exponential trace condition:
+```
+tr(e^(W ⊙ W)) - d = 0
+```
+
+Where W is a weighted adjacency matrix and ⊙ is element-wise multiplication. This constraint is differentiable and enforces acyclicity exactly.
+
+**When to Use NOTEARS vs. GES vs. PC:**
+
+| Algorithm | Best For | Avoid When | Scalability |
+|-----------|----------|------------|-------------|
+| **NOTEARS** | Large networks (>100 nodes), continuous variables, GPU available | Causal interpretation ambiguous, need sparse solutions | Very high (handles thousands of nodes) |
+| **GES** (Greedy Equivalence Search) | Medium networks (<100 nodes), need theoretical guarantees | Very large networks, dense graphs | Moderate |
+| **PC** | Small networks (<50 nodes), need speed, causal discovery | High-dimensional data, underdetermined systems | Moderate (O(n^k) worst case) |
+
+**Scenarios:**
+- **Gene regulatory networks:** Use NOTEARS for thousands of genes, but validate with PC for small subnetworks
+- **Social influence networks:** Use GES for well-specified models with moderate size
+- **Financial networks:** Use PC when domain knowledge constraints are available
+
+**Challenges with NOTEARS:**
+- Pure NOTEARS often produces dense graphs (needs sparsity regularization)
+- Convergence to local minima
+- Limited to linear relationships in basic form (nonlinear extensions exist)
+- Does not explicitly return a DAG (needs thresholding on edge weights)
+
+### 8.5 Bayesian Model Averaging
+
+**The Problem: Model Selection Bias**
+
+Standard structure learning produces a single "best" graph. This induces model selection bias:
+- Different samples may produce different "best" graphs
+- The "best" graph ignores uncertainty about structure
+- Causal conclusions based on a single graph may be fragile
+
+**Solution: Averaging Over Posterior Distribution of Graphs**
+
+Bayesian Model Averaging (BMA) treats structure as a random variable. For a query Q:
+```
+P(Q | D) = Σ_G P(Q | G, D) · P(G | D)
+```
+
+Where P(G | D) is the posterior probability of graph G given data D:
+```
+P(G | D) = P(D | G) · P(G) / Σ_G' P(D | G') · P(G')
+```
+
+**Why This Matters for Causal Discovery:**
+
+Causal effects are often sensitive to minor structural changes. BMA accounts for structural uncertainty:
+- Edge directions that are uncertain under the data should not drive strong causal conclusions
+- Observational data cannot distinguish Markov-equivalent structures; BMA weights them equally
+- Confidence intervals on causal effects should include structural uncertainty
+
+**Practical Implementation:**
+
+Exact BMA is intractable (sum over super-exponential number of graphs). Approximations:
+1. **MCMC over graphs:** Sample G in proportion to P(G | D), average over samples
+2. **Structure boosting:** Weight multiple high-scoring graphs by their score ratios
+3. **Edge marginalization:** Compute marginal posterior of each edge independently
+
+**Lutufi Support:**
+Lutufi provides BMA capabilities through:
+- `model.sample_structures(n=1000)`: Sample candidate DAGs from posterior
+- `model.weighted_average(structures, weights)`: Average inference over multiple structures
+- `model.edge_posterior(edge)`: Compute P(edge exists | D) integrating over all graphs
+
+**Example:**
+```python
+# Learn distribution over structures
+structure_samples = model.sample_structures(data, n_samples=1000)
+
+# Average causal effect (ACE) accounting for structure uncertainty
+causal_effects = []
+for sampled_model in structure_samples:
+    ace = sampled_model.causal.ate(treatment='X', outcome='Y')
+    causal_effects.append(ace)
+
+# Report mean and credible interval
+print(f"ACE: {np.mean(causal_effects):.3f} [{np.percentile(causal_effects, 5):.3f}, {np.percentile(causal_effects, 95):.3f}]")
+```
+
 ---
 
 ## 9. Parameter Learning
@@ -618,7 +712,25 @@ Belief propagation on factor graphs (the sum-product algorithm) generalizes both
 
 ### 11.3 Influence Diagrams and Decision Networks
 
-**Influence diagrams** (Howard & Matheson, 1984; Shachter, 1986) extend Bayesian networks with decision nodes (representing choices) and utility/value nodes (representing preferences). They provide a compact representation for decision problems under uncertainty and support computing optimal policies.
+**Status: Out of Scope for Current Version**
+
+**What Influence Diagrams Are:**
+Influence diagrams (Howard & Matheson, 1984; Shachter, 1986) extend Bayesian networks with decision nodes (representing choices) and utility/value nodes (representing preferences). They provide a compact representation for decision problems under uncertainty and support computing optimal policies through backward induction (policy iteration).
+
+**Why Excluded:**
+While influence diagrams are powerful for decision analysis, they introduce complexity that would distract from Lutufi's core mission:
+1. **Scope expansion:** Influence diagrams require significant additional infrastructure (policy optimization, multi-stage reasoning, sensitivity analysis)
+2. **Different expertise:** Optimal policy computation draws from operations research and decision theory rather than network science
+3. **Resource constraints:** Supporting decision nodes, utility functions, and policy optimization would extend the development timeline significantly
+4. **Alternative tools:** Specialized libraries (e.g., PyDecision, OpenDecision) already provide influence diagram functionality
+
+**Future Consideration:**
+Influence diagrams may be added in a future release (v2.0+) if there is demonstrated demand from users. The current recommendation is to:
+- Use Lutufi for probabilistic inference over network structures
+- Export inference results to decision analysis tools for policy optimization
+- Use the do-calculus support for simple single-decision interventions
+
+**Decision:** Explicitly out of scope for Lutufi 1.0. Users needing decision analysis should use specialized tools and import Lutufi's inference results as input distributions.
 
 ### 11.4 Chain Graphs
 
