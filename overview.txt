@@ -14,7 +14,7 @@ The hardest part won't be the idea — it'll be *unification*. Bayesian networks
 
 **On the multilanguage bindings**
 
-This is a smart instinct — the people who need this most (economists, sociologists, epidemiologists) often work in Python or R, not C/C++. But bindings add maintenance burden fast. I'd recommend a clean core in one language first (Rust or C++ for performance, or Python for accessibility), then add bindings once the API stabilizes. Doing bindings too early means you're refactoring them constantly.
+This is a smart instinct — the people who need this most (economists, sociologists, epidemiologists) often work in Python or R. But bindings add maintenance burden fast. I'd recommend a clean core in one language first (Rust for performance, or Python for accessibility), then add bindings once the API stabilizes. Doing bindings too early means you're refactoring them constantly.
 
 **On the example library**
 

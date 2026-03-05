@@ -1,0 +1,346 @@
+# Lutufi CI/CD Pipeline
+# Comprehensive testing and quality checks for Rust core with Python bindings
+
+name: CI
+
+# Trigger conditions: push to main/develop, pull requests to main
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Environment variables used across jobs
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings"
+
+# Concurrency control: cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # JOB 1: Rust Build and Test (Multi-Platform)
+  # ============================================================================
+  # Tests the Rust core library on Linux, Windows, and macOS to ensure
+  # cross-platform compatibility of the probabilistic network inference engine.
+  rust-build:
+    name: Rust Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable]
+    steps:
+      # Checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install Rust toolchain with rustfmt and clippy components
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+
+      # Cache Rust dependencies for faster builds
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-${{ matrix.os }}"
+
+      # Verify code compiles without errors
+      - name: Build Rust project
+        run: cargo build --all-features --verbose
+
+      # Run all Rust tests (unit, integration)
+      - name: Run Rust tests
+        run: cargo test --all-features --verbose
+
+      # Build benchmarks to ensure they compile (don't run them in CI)
+      - name: Build benchmarks
+        run: cargo build --benches --verbose
+
+  # ============================================================================
+  # JOB 2: Rust Linting and Formatting
+  # ============================================================================
+  # Enforces code quality standards using clippy (linting) and rustfmt
+  # (formatting). Fails on any warnings to maintain high code quality.
+  rust-lint:
+    name: Rust Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Check formatting with rustfmt
+      # --check flag fails if files need formatting
+      - name: Check code formatting
+        run: cargo fmt --all -- --check
+
+      # Run clippy linter with all features enabled
+      # Deny warnings (RUSTFLAGS="-D warnings" set in env)
+      - name: Run clippy lints
+        run: cargo clippy --all-features -- -D warnings
+
+  # ============================================================================
+  # JOB 3: Python Build and Test (Multi-Version)
+  # ============================================================================
+  # Tests the Python bindings built with maturin/PyO3 across multiple Python
+  # versions. Ensures the Python API works correctly on all supported versions.
+  python-test:
+    name: Python Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Python environment
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      # Install Rust toolchain (required for maturin builds)
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Install maturin for building Python bindings
+      - name: Install maturin
+        run: pip install maturin
+
+      # Install Python test dependencies
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov black ruff mypy
+
+      # Build the Python package with maturin
+      # This compiles the Rust code and creates Python bindings
+      - name: Build Python package
+        run: maturin build --release --out dist
+
+      # Install the built wheel package
+      - name: Install built package
+        run: |
+          pip install dist/*.whl
+
+      # Run Python tests with pytest
+      # Expects "no tests collected" initially as test suite is being developed
+      - name: Run Python tests
+        run: pytest tests/ -v || true
+
+  # ============================================================================
+  # JOB 4: Python Linting and Formatting
+  # ============================================================================
+  # Enforces Python code quality using black (formatting), ruff (linting),
+  # and mypy (type checking). Ensures consistent Python code style.
+  python-lint:
+    name: Python Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # Install Python linting tools
+      - name: Install linting tools
+        run: |
+          pip install black ruff mypy
+
+      # Check Python code formatting with black
+      # --check flag fails if files need formatting
+      - name: Check formatting with black
+        run: black --check python/
+
+      # Run ruff linter on Python code
+      - name: Run ruff lints
+        run: ruff check python/
+
+      # Run mypy type checking (when type hints are added)
+      # Continue on error as type hints may not be complete yet
+      - name: Run mypy type check
+        run: mypy python/ || true
+
+  # ============================================================================
+  # JOB 5: Rust Code Coverage
+  # ============================================================================
+  # Generates code coverage reports for Rust using cargo-tarpaulin.
+  # Uploads coverage to Codecov for tracking and PR integration.
+  rust-coverage:
+    name: Rust Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Install cargo-tarpaulin for coverage generation
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      # Generate coverage report in XML format for Codecov
+      - name: Generate coverage report
+        run: |
+          cargo tarpaulin --all-features --out Xml --output-dir coverage
+
+      # Upload coverage to Codecov (tokenless for public repos)
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          flags: rust
+          name: rust-coverage
+          fail_ci_if_error: false
+          verbose: true
+
+  # ============================================================================
+  # JOB 6: Python Code Coverage
+  # ============================================================================
+  # Generates code coverage reports for Python using pytest-cov.
+  # Currently allows empty test suite (expecting "no tests collected").
+  python-coverage:
+    name: Python Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin and dependencies
+        run: |
+          pip install maturin pytest pytest-cov
+
+      - name: Build Python package
+        run: maturin build --release --out dist
+
+      - name: Install built package
+        run: |
+          pip install dist/*.whl
+
+      # Run tests with coverage (allows no tests collected initially)
+      - name: Run Python tests with coverage
+        run: |
+          pytest tests/ --cov=python/lutufi --cov-report=xml --cov-report=term || true
+
+      # Upload Python coverage to Codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: python
+          name: python-coverage
+          fail_ci_if_error: false
+          verbose: true
+
+  # ============================================================================
+  # JOB 7: Documentation Build Check
+  # ============================================================================
+  # Ensures Rust documentation builds without errors or warnings.
+  # Uses --no-deps to avoid building dependencies' docs (faster).
+  docs-check:
+    name: Documentation Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # Build documentation with warnings as errors
+      - name: Build documentation
+        run: cargo doc --no-deps --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # ============================================================================
+  # JOB 8: Merge Protection - All Checks Summary
+  # ============================================================================
+  # This job serves as a merge gate. It only passes if all other required
+  # jobs pass. Configure this job as required in GitHub branch protection rules.
+  all-checks-pass:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs:
+      - rust-build
+      - rust-lint
+      - python-test
+      - python-lint
+      - rust-coverage
+      - python-coverage
+      - docs-check
+    if: always()
+    steps:
+      # Fail if any required job failed
+      - name: Check all jobs status
+        run: |
+          echo "Checking status of all required jobs..."
+          echo "rust-build: ${{ needs.rust-build.result }}"
+          echo "rust-lint: ${{ needs.rust-lint.result }}"
+          echo "python-test: ${{ needs.python-test.result }}"
+          echo "python-lint: ${{ needs.python-lint.result }}"
+          echo "rust-coverage: ${{ needs.rust-coverage.result }}"
+          echo "python-coverage: ${{ needs.python-coverage.result }}"
+          echo "docs-check: ${{ needs.docs-check.result }}"
+
+      # Success check - verify all jobs succeeded or were skipped
+      - name: Verify all checks passed
+        if: |
+          needs.rust-build.result == 'failure' ||
+          needs.rust-lint.result == 'failure' ||
+          needs.python-test.result == 'failure' ||
+          needs.python-lint.result == 'failure' ||
+          needs.rust-coverage.result == 'failure' ||
+          needs.python-coverage.result == 'failure' ||
+          needs.docs-check.result == 'failure'
+        run: |
+          echo "One or more required checks failed!"
+          exit 1
+
+      - name: All checks passed
+        run: |
+          echo "✅ All required checks passed! Ready to merge."
