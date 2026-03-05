@@ -322,25 +322,36 @@ pytest tests/ -x  # Run tests to verify setup
 
 ```
 lutufi/
-├── src/                    # Source code
-│   └── lutufi/
-│       ├── core/           # Core inference engine
-│       ├── networks/       # Network representations
-│       ├── inference/      # Inference algorithms
-│       ├── learning/       # Structure and parameter learning
-│       ├── visualization/  # Plotting and visualization
-│       └── utils/          # Utility functions
-├── tests/                  # Test suite
-│   ├── unit/              # Unit tests
-│   ├── integration/       # Integration tests
-│   └── property/          # Property-based tests
-├── docs/                   # Documentation
-│   ├── api/               # API reference
-│   ├── tutorials/         # Tutorials
-│   └── examples/          # Example code
-├── benchmarks/             # Performance benchmarks
-├── scripts/                # Development scripts
-└── .github/               # GitHub workflows
+  src/                    # Rust core
+    core/
+      models/
+      representation/
+      inference/
+      learning/
+      io/
+    ffi/                  # PyO3 FFI layer
+  python/                 # Installable Python package
+    lutufi/
+      __init__.py
+      models.py
+      inference.py
+      learning.py
+      io.py
+  tests/                  # Rust tests (cargo test)
+    unit/
+    integration/
+    ground_truth/         # Analytical solutions, Rust
+  benches/                # Rust benchmarks (cargo bench)
+  examples/               # Python examples via bindings
+    epidemiology/
+    finance/
+    social/
+    intelligence/
+    validation/           # Examples that assert correctness
+  bindings/               # Future R, Julia
+  docs/
+  Cargo.toml
+  pyproject.toml
 ```
 
 ### Development Tools
