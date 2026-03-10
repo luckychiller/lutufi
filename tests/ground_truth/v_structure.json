@@ -1,0 +1,34 @@
+{
+  "name": "V-Structure",
+  "structure": "A -> C <- B",
+  "nodes": ["A", "B", "C"],
+  "edges": [["A", "C"], ["B", "C"]],
+  "cpts": {
+    "A": [0.5, 0.5],
+    "B": [0.5, 0.5],
+    "C|A,B": [
+      [[0.9, 0.1], [0.4, 0.6]],
+      [[0.4, 0.6], [0.1, 0.9]]
+    ]
+  },
+  "queries": [
+    {
+      "description": "Marginal of A with no evidence",
+      "evidence": {},
+      "target": "A",
+      "expected": [0.5, 0.5]
+    },
+    {
+      "description": "Marginal of B with no evidence",
+      "evidence": {},
+      "target": "B",
+      "expected": [0.5, 0.5]
+    },
+    {
+      "description": "Marginal of A given C=0",
+      "evidence": {"C": 0},
+      "target": "A",
+      "expected": [0.7222222222, 0.2777777778]
+    }
+  ]
+}

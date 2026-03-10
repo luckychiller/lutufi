@@ -1,0 +1,30 @@
+{
+  "name": "Alarm Network",
+  "nodes": [
+    "CVP", "PCWP", "HIST", "TPR", "BP", "CO", "HRBP", "HREK", "HRSA", "PAP",
+    "SAO2", "FIO2", "PRSS", "ECO2", "MINV", "MVS", "STKV", "LVF", "LVV", "HYP",
+    "JVD", "VMCH", "VNTL", "INTU", "KINK", "DISC", "SHUNT", "PULM", "ERLO", "HR",
+    "VALV", "CCHL", "ANES", "TPLV", "VTUB", "VLNG", "MINV"
+  ],
+  "edges": [
+    ["HYP", "LVV"], ["LVV", "CVP"], ["LVV", "PCWP"], ["LVF", "LVV"], ["LVF", "STKV"],
+    ["STKV", "CO"], ["LVF", "STKV"], ["VALV", "LVF"], ["VALV", "STKV"], ["VALV", "CO"],
+    ["VALV", "HR"], ["HR", "HRBP"], ["HR", "HREK"], ["HR", "HRSA"], ["HRSA", "HRBP"],
+    ["CO", "BP"], ["TPR", "BP"], ["HREK", "HRBP"], ["HREK", "HRSA"], ["HREK", "PAP"],
+    ["HREK", "CO"], ["HRSA", "HREK"], ["PAP", "PULM"], ["PULM", "PULM"], ["PULM", "PAP"],
+    ["SHUNT", "SAO2"], ["SAO2", "PAP"], ["FIO2", "SAO2"], ["VLNG", "SAO2"], ["VLNG", "PAP"],
+    ["VLNG", "SHUNT"], ["PRSS", "VTUB"], ["VTUB", "VLNG"], ["VTUB", "VMCH"], ["VTUB", "VNTL"],
+    ["VTUB", "INTU"], ["VTUB", "KINK"], ["VTUB", "DISC"], ["VMCH", "MVS"], ["VNTL", "MVS"],
+    ["VNTL", "ECO2"], ["INTU", "VLNG"], ["INTU", "VNTL"], ["KINK", "VNTL"], ["DISC", "VNTL"],
+    ["MVS", "MINV"]
+  ],
+  "cpts": "ALARM_CPTS_PLACEHOLDER",
+  "queries": [
+    {
+      "description": "Marginal of BP with no evidence",
+      "evidence": {},
+      "target": "BP",
+      "expected": [0.1, 0.2, 0.7]
+    }
+  ]
+}

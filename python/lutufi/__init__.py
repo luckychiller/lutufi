@@ -9,7 +9,7 @@ This package provides Python bindings for the Lutufi Rust core, offering:
 Example:
     >>> import lutufi
     >>> print(lutufi.__version__)
-    '0.1.0'
+    '0.1.0-dev'
 """
 
 try:
@@ -22,7 +22,7 @@ try:
     )
 except ImportError:
     # Fallback when the Rust extension is not built
-    __version__ = "0.1.0"
+    __version__ = "0.1.0-dev"
     models = None
     inference = None
     learning = None

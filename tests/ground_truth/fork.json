@@ -1,0 +1,37 @@
+{
+  "name": "Fork Structure",
+  "structure": "A <- B -> C",
+  "nodes": ["A", "B", "C"],
+  "edges": [["B", "A"], ["B", "C"]],
+  "cpts": {
+    "B": [0.5, 0.5],
+    "A|B": [[0.9, 0.1], [0.2, 0.8]],
+    "C|B": [[0.3, 0.7], [0.6, 0.4]]
+  },
+  "queries": [
+    {
+      "description": "Marginal of A with no evidence",
+      "evidence": {},
+      "target": "A",
+      "expected": [0.55, 0.45]
+    },
+    {
+      "description": "Marginal of C with no evidence",
+      "evidence": {},
+      "target": "C",
+      "expected": [0.45, 0.55]
+    },
+    {
+      "description": "Marginal of A given B=0",
+      "evidence": {"B": 0},
+      "target": "A",
+      "expected": [0.9, 0.1]
+    },
+    {
+      "description": "Marginal of C given B=0",
+      "evidence": {"B": 0},
+      "target": "C",
+      "expected": [0.3, 0.7]
+    }
+  ]
+}
