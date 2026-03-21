@@ -12,6 +12,7 @@
 pub mod core;
 
 #[cfg(feature = "python")]
+#[path = "../bindings/ffi/mod.rs"]
 pub mod ffi;
 
 /// Prelude module for convenient imports

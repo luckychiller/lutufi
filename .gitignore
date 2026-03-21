@@ -1,3 +1,7 @@
+task.txt
+overview.txt
+
+
 # Rust
 /target/
 Cargo.lock

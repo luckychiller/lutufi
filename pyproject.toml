@@ -74,7 +74,7 @@ Changelog = "https://github.com/lutufi/lutufi/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 manifest-path = "Cargo.toml"
-python-source = "python"
+python-source = "bindings/python"
 module-name = "lutufi._lutufi"
 features = ["pyo3/extension-module"]
 

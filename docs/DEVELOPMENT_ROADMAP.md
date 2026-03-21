@@ -73,36 +73,27 @@ Before a single line of library code exists, three things must be true: you know
 
 ```
 lutufi/
-  src/                    # Rust core
-    core/
-      models/
-      representation/
-      inference/
-      learning/
-      io/
-    ffi/                  # PyO3 FFI layer
-  python/                 # Installable Python package
-    lutufi/
-      __init__.py
-      models.py
-      inference.py
-      learning.py
-      io.py
-  tests/                  # Rust tests (cargo test)
+  src/                    ← Rust core, zero Python awareness
+  bindings/
+    ffi/                  ← Rust/PyO3 bridge (compiled into the crate)
+    python/lutufi/        ← installable Python package
+    r/
+    julia/
+  tests/                  ← Rust tests only, cargo test
     unit/
     integration/
-    ground_truth/         # Analytical solutions, Rust
-  benches/                # Rust benchmarks (cargo bench)
-  examples/               # Python examples via bindings
+  fixtures/               ← renamed from assets/
+    ground_truth/
+    missing_edges/
+    missing_nodes/
+  benches/                ← Rust benchmarks, cargo bench
+  validation/             ← Python correctness assertions only
+  examples/               ← Python domain examples only
     epidemiology/
     finance/
-    social/
     intelligence/
-    validation/           # Examples that assert correctness
-  bindings/               # Future R, Julia
+    social/
   docs/
-  Cargo.toml
-  pyproject.toml
 ```
 
 4. **Write the project README.** One paragraph on what Lutufi is, one on what problem it solves, one on current status (pre-alpha, do not use in production), installation instructions (pip install once published), and a minimal example that will eventually run when the library is complete. Commit this as the aspirational target.

@@ -1,79 +1,79 @@
 [package]
-name = "lutufi"
-version = "0.1.0-dev"
+name = "lutufi-core"
+version = "0.1.0"
 edition = "2021"
-authors = ["Lutufi Contributors"]
-description = "High-performance network analysis library with probabilistic reasoning"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/lutufi/lutufi"
-keywords = ["networks", "graphs", "bayesian", "inference", "probabilistic"]
-categories = ["science", "mathematics", "algorithms"]
-rust-version = "1.70"
+authors = ["Wasswa Lutufi Sebbanja"]
+description = "Probabilistic inference over social and economic networks"
+license = "Apache-2.0"
+repository = "https://github.com/luckychiller/lutufi"
 
 [lib]
-name = "lutufi"
+name = "lutufi_core"
+path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
+# cdylib → .so/.dll for PyO3
+# rlib   → .rlib for Rust tests and benchmarks
 
 [dependencies]
-# Core numerical computing
-ndarray = { version = "0.15", features = ["serde", "rayon"] }
-sprs = { version = "0.11", features = ["serde"] }
-
-# Error handling
-thiserror = "1.0"
-anyhow = "1.0"
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# Python bindings (PyO3)
-pyo3 = { version = "0.20", features = ["extension-module", "abi3-py38"], optional = true }
-numpy = { version = "0.20", optional = true }
-
-# Parallelism
-rayon = "1.8"
-
-# Logging
-tracing = "0.1"
-
-# Utilities
-indexmap = "2.0"
-parking_lot = "0.12"
-
-[dependencies.uuid]
-version = "1.6"
-features = ["v4", "serde"]
-
-[features]
-default = ["python"]
-python = ["dep:pyo3", "dep:numpy"]
+uuid         = { version = "1.6",  features = ["v4", "serde"] }
+serde        = { version = "1.0",  features = ["derive"] }
+serde_json   = "1.0"
+thiserror    = "1.0"
+ndarray      = "0.15"
+ndarray-stats = "0.5"
+sprs         = "0.11"
+ordered-float = "3.0"
+indexmap     = "2.0"
+log          = "0.4"
+petgraph     = "0.6"
+pyo3         = { version = "0.22", features = ["extension-module", "abi3-py39"], optional = true }
 
 [dev-dependencies]
+approx    = "0.5"
+rstest    = "0.18"
 criterion = { version = "0.5", features = ["html_reports"] }
-proptest = "1.4"
-tempfile = "3.8"
-pretty_assertions = "1.4"
 
+[features]
+default = []
+python  = ["pyo3"]
+
+# Tests 
+[[test]]
+name = "unit_variable"
+path = "tests/unit/variable_tests.rs"
+
+[[test]]
+name = "unit_domain"
+path = "tests/unit/domain_tests.rs"
+
+[[test]]
+name = "unit_assignment"
+path = "tests/unit/assignment_tests.rs"
+
+[[test]]
+name = "unit_factor"
+path = "tests/unit/factor_tests.rs"
+
+[[test]]
+name = "unit_graph"
+path = "tests/unit/graph_tests.rs"
+
+[[test]]
+name = "unit_error"
+path = "tests/unit/error_tests.rs"
+
+[[test]]
+name = "integration_model_construction"
+path = "tests/integration/model_construction.rs"
+
+# Benchmarks 
 [[bench]]
-name = "inference_benchmarks"
+name = "factor_operations"
+path = "benches/factor_operations.rs"
 harness = false
 
-[[bench]]
-name = "learning_benchmarks"
-harness = false
-
-[[bench]]
-name = "representation_benchmarks"
-harness = false
-
+# Release profile
 [profile.release]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
-panic = "abort"
-
-[profile.bench]
-opt-level = 3
-lto = "thin"
-codegen-units = 1
+opt-level      = 3
+lto            = true
+codegen-units  = 1

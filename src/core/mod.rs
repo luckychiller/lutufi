@@ -12,6 +12,10 @@ pub mod representation;
 pub mod inference;
 pub mod learning;
 pub mod io;
+pub mod domain;
+pub mod error;
+pub mod variable;
+pub mod assignment;
 
 /// Re-export commonly used types
 pub use models::*;

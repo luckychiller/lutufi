@@ -1,0 +1,31 @@
+{
+  "name": "Asia Missing Node",
+  "nodes": ["Asia", "Smoke", "Lung", "Bronc", "Either", "Xray", "Dysp"],
+  "edges": [
+    ["Asia", "Tub"],
+    ["Smoke", "Lung"],
+    ["Smoke", "Bronc"],
+    ["Tub", "Either"],
+    ["Lung", "Either"],
+    ["Either", "Xray"],
+    ["Either", "Dysp"],
+    ["Bronc", "Dysp"]
+  ],
+  "cpts": {
+    "Asia": [0.01, 0.99],
+    "Smoke": [0.5, 0.5],
+    "Tub|Asia": [[0.05, 0.95], [0.01, 0.99]],
+    "Lung|Smoke": [[0.1, 0.9], [0.01, 0.99]],
+    "Bronc|Smoke": [[0.6, 0.4], [0.3, 0.7]],
+    "Either|Tub,Lung": [
+      [[1.0, 0.0], [1.0, 0.0]],
+      [[1.0, 0.0], [0.0, 1.0]]
+    ],
+    "Xray|Either": [[0.98, 0.02], [0.05, 0.95]],
+    "Dysp|Either,Bronc": [
+      [[0.9, 0.1], [0.7, 0.3]],
+      [[0.8, 0.2], [0.1, 0.9]]
+    ]
+  },
+  "queries": []
+}

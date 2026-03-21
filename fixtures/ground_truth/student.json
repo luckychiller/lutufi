@@ -1,0 +1,35 @@
+{
+  "name": "Student",
+  "nodes": ["Difficulty", "Intelligence", "Grade", "SAT", "Letter"],
+  "domains": {
+    "Difficulty": ["hard", "easy"],
+    "Intelligence": ["low", "high"],
+    "Grade": ["A", "B", "C"],
+    "SAT": ["low", "high"],
+    "Letter": ["weak", "strong"]
+  },
+  "edges": [
+    ["Difficulty", "Grade"],
+    ["Intelligence", "Grade"],
+    ["Intelligence", "SAT"],
+    ["Grade", "Letter"]
+  ],
+  "cpts": {
+    "Difficulty": [0.6, 0.4],
+    "Intelligence": [0.7, 0.3],
+    "Grade|Difficulty,Intelligence": [
+      [[0.05, 0.25, 0.70], [0.50, 0.30, 0.20]],
+      [[0.30, 0.40, 0.30], [0.90, 0.08, 0.02]]
+    ],
+    "SAT|Intelligence": [
+      [0.95, 0.05],
+      [0.20, 0.80]
+    ],
+    "Letter|Grade": [
+      [0.10, 0.90],
+      [0.40, 0.60],
+      [0.99, 0.01]
+    ]
+  },
+  "queries": []
+}

@@ -19,6 +19,8 @@ try:
         inference,
         learning,
         io,
+        Variable,
+        Domain,
     )
 except ImportError:
     # Fallback when the Rust extension is not built
@@ -27,6 +29,8 @@ except ImportError:
     inference = None
     learning = None
     io = None
+    Variable = None
+    Domain = None
 
 from lutufi.models import NetworkModel
 from lutufi.inference import InferenceEngine
@@ -39,6 +43,8 @@ __all__ = [
     "inference",
     "learning",
     "io",
+    "Variable",
+    "Domain",
     "NetworkModel",
     "InferenceEngine",
     "LearningEngine",

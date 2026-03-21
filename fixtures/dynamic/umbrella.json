@@ -1,0 +1,43 @@
+{
+  "name": "Umbrella World (Unrolled T=3)",
+  "nodes": ["Rain_0", "Umbrella_0", "Rain_1", "Umbrella_1", "Rain_2", "Umbrella_2"],
+  "domains": {
+    "Rain_0": ["true", "false"],
+    "Umbrella_0": ["true", "false"],
+    "Rain_1": ["true", "false"],
+    "Umbrella_1": ["true", "false"],
+    "Rain_2": ["true", "false"],
+    "Umbrella_2": ["true", "false"]
+  },
+  "edges": [
+    ["Rain_0", "Rain_1"],
+    ["Rain_1", "Rain_2"],
+    ["Rain_0", "Umbrella_0"],
+    ["Rain_1", "Umbrella_1"],
+    ["Rain_2", "Umbrella_2"]
+  ],
+  "cpts": {
+    "Rain_0": [0.5, 0.5],
+    "Rain_1|Rain_0": [
+      [0.7, 0.3],
+      [0.3, 0.7]
+    ],
+    "Rain_2|Rain_1": [
+      [0.7, 0.3],
+      [0.3, 0.7]
+    ],
+    "Umbrella_0|Rain_0": [
+      [0.9, 0.1],
+      [0.2, 0.8]
+    ],
+    "Umbrella_1|Rain_1": [
+      [0.9, 0.1],
+      [0.2, 0.8]
+    ],
+    "Umbrella_2|Rain_2": [
+      [0.9, 0.1],
+      [0.2, 0.8]
+    ]
+  },
+  "queries": []
+}
