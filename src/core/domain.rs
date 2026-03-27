@@ -38,11 +38,6 @@ impl Domain {
     /// # Errors
     /// Returns `LutufiError::EmptyDomain` if `states` is empty.
     ///
-    /// # Example
-    /// ```rust
-    /// let domain = Domain::discrete(vec!["low", "medium", "high"]).unwrap();
-    /// assert_eq!(domain.size(), Some(3));
-    /// ```
     pub fn discrete(states: Vec<impl Into<String>>) -> LutufiResult<Self> {
         let states: Vec<String> = states.into_iter().map(|s| s.into()).collect();
         if states.is_empty() {

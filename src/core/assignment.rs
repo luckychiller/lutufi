@@ -48,6 +48,23 @@ impl Assignment {
         self.values.get(variable).map(|s| s.as_str())
     }
 
+    /// Get the discrete index of the assigned value for a variable.
+    ///
+    /// # Errors
+    /// - `LutufiError::VariableNotFound` if the variable is not assigned.
+    /// - `LutufiError::InternalError` if the value is not a valid integer index.
+    pub fn get_discrete(&self, variable: &VariableId) -> crate::core::error::LutufiResult<usize> {
+        self.get(variable)
+            .ok_or_else(|| crate::core::error::LutufiError::VariableNotFound {
+                name: variable.to_string(),
+                available: self.values.keys().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
+            })?
+            .parse::<usize>()
+            .map_err(|e| crate::core::error::LutufiError::InternalError {
+                message: format!("Assignment value for {} is not a valid discrete index: {}", variable, e),
+            })
+    }
+
     /// Check whether a variable has been assigned.
     pub fn is_assigned(&self, variable: &VariableId) -> bool {
         self.values.contains_key(variable)

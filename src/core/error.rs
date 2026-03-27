@@ -3,159 +3,166 @@
 
 use thiserror::Error;
 
+/// The master error type for all Lutufi operations.
 #[derive(Debug, Error)]
 pub enum LutufiError {
 
     // Variable and Domain Errors 
 
-    #[error(
-        "Variable '{name}' already exists in this model.\n\
-         Hint: Each variable must have a unique name. \
-         If you want to update a variable, remove it first with remove_node()."
-    )]
-    VariableAlreadyExists { name: String },
+    /// Raised when a variable with the same name already exists in the model.
+    #[error("Variable with name '{name}' already exists.")]
+    VariableAlreadyExists { 
+        /// The name of the existing variable.
+        name: String 
+    },
 
-    #[error(
-        "Variable '{name}' was not found in this model.\n\
-         Hint: Check that the variable name is spelled correctly. \
-         Available variables: {available}"
-    )]
-    VariableNotFound { name: String, available: String },
+    /// Raised when a variable name is referenced but not found in the model.
+    #[error("Variable '{name}' not found. Available variables: {available}")]
+    VariableNotFound { 
+        /// The name that was searched for.
+        name: String, 
+        /// List of variable names that actually exist in the model.
+        available: String 
+    },
 
-    #[error(
-        "Value '{value}' is not in the domain of variable '{variable}'.\n\
-         Valid values are: {valid_values}\n\
-         Hint: Domain values are case-sensitive."
-    )]
+    /// Raised when an assignment or CPT uses a value not present in the variable's domain.
+    #[error("Value '{value}' is not in the domain of variable '{variable}'. Valid values: {valid_values}")]
     ValueNotInDomain {
+        /// The invalid value.
         value: String,
+        /// The variable it was assigned to.
         variable: String,
+        /// The correct values for this variable.
         valid_values: String,
     },
 
-    #[error(
-        "Domain cannot be empty. Variable '{name}' was given an empty domain.\n\
-         Hint: A variable must have at least one possible state."
-    )]
-    EmptyDomain { name: String },
+    /// Raised when a domain is created with zero states.
+    #[error("Domain for variable '{name}' cannot be empty.")]
+    EmptyDomain { 
+        /// The variable name.
+        name: String 
+    },
 
-    // Graph and Structure Errors 
+    // Graph and Structure Errors
 
-    #[error(
-        "Adding edge '{from}' → '{to}' would create a cycle in this Bayesian Network.\n\
-         Detected cycle: {cycle}\n\
-         Hint: Bayesian Networks must be acyclic (DAGs). \
-         If your domain has feedback loops, consider using a \
-         DynamicBayesianNetwork (DBN) which models cycles across time steps, \
-         or a MarkovRandomField for symmetric undirected relationships."
-    )]
+    /// Raised when adding an edge would create a cycle in a Directed Acyclic Graph (DAG).
+    #[error("Adding edge {from} -> {to} would create a cycle: {cycle}")]
     CyclicGraph {
+        /// Start node of the edge.
         from: String,
+        /// End node of the edge.
         to: String,
+        /// Path forming the cycle.
         cycle: String,
     },
 
-    #[error(
-        "Cannot add edge from '{from}' to '{to}': node '{missing}' does not exist.\n\
-         Hint: Add all nodes before adding edges between them."
-    )]
-    EdgeToMissingNode { from: String, to: String, missing: String },
+    /// Raised when an edge refers to a node that has not been added to the graph.
+    #[error("Cannot add edge {from} -> {to}: node '{missing}' is missing from the graph.")]
+    EdgeToMissingNode { 
+        /// Source node.
+        from: String, 
+        /// Target node.
+        to: String, 
+        /// The node that is missing.
+        missing: String 
+    },
 
-    // CPT and Factor Errors 
+    // Factor and CPT Errors
 
-    #[error(
-        "CPT for variable '{variable}' does not sum to 1 for parent \
-         configuration [{parent_config}].\n\
-         Expected sum: 1.0, Got: {actual_sum:.6}\n\
-         Hint: Each column of a CPT must sum to exactly 1.0 (within 1e-6 tolerance). \
-         Check your probability values."
-    )]
+    /// Raised when a Conditional Probability Table (CPT) does not sum to 1.0.
+    #[error("CPT for variable '{variable}' for parent configuration {parent_config} sums to {actual_sum}, not 1.0.")]
     CptDoesNotNormalize {
+        /// The child variable.
         variable: String,
+        /// The parent configuration string.
         parent_config: String,
+        /// The actual sum of the row.
         actual_sum: f64,
     },
 
-    #[error(
-        "CPT for variable '{variable}' has wrong shape.\n\
-         Expected: {expected_shape} (based on parent domains × child domain)\n\
-         Got: {actual_shape}\n\
-         Hint: CPT rows correspond to child states, columns to parent configurations."
-    )]
+    /// Raised when the provided values for a CPT do not match the expected table shape.
+    #[error("CPT for variable '{variable}' has wrong shape. Expected {expected_shape}, got {actual_shape}.")]
     CptWrongShape {
+        /// The child variable.
         variable: String,
+        /// The required shape.
         expected_shape: String,
+        /// The shape provided.
         actual_shape: String,
     },
 
-    #[error(
-        "CPT for variable '{variable}' references parents {cpt_parents:?},\n\
-         but the graph shows parents {graph_parents:?}.\n\
-         Hint: The CPT parent order must match the graph edge order exactly."
-    )]
+    /// Raised when a CPT's parent set does not match the graph's parent set for that node.
+    #[error("CPT for variable '{variable}' references parents {cpt_parents:?}, but the graph shows parents {graph_parents:?}.")]
     CptParentMismatch {
+        /// The child variable.
         variable: String,
+        /// Parents listed in the CPT.
         cpt_parents: Vec<String>,
+        /// Parents present in the graph.
         graph_parents: Vec<String>,
     },
 
-    #[error(
-        "Variable '{variable}' has no CPT set.\n\
-         Hint: Call set_cpd('{variable}', ...) before running inference. \
-         All variables in the network must have CPTs before inference can proceed."
-    )]
-    MissingCpt { variable: String },
+    /// Raised when inference is called but a node is missing its CPT.
+    #[error("Variable '{variable}' has no CPT. Call set_cpd() before running inference.")]
+    MissingCpt { 
+        /// The variable missing its table.
+        variable: String 
+    },
 
-    // Inference and Causal Errors 
+    // Causal Inference Errors
 
-    #[error(
-        "Cannot run causal inference on a non-causal model.\n\
-         You called do({variable} = {value}) but this model has not been \
-         marked as a structural causal model.\n\
-         Hint: If your edges represent direct causal mechanisms (not just \
-         statistical dependencies), call model.mark_as_causal() first. \
-         If you are unsure, do not mark the model as causal — correlation \
-         does not imply causation."
-    )]
-    NonCausalModel { variable: String, value: String },
+    /// Raised when a causal operation (like the do-operator) is called on a non-causal model.
+    #[error("Cannot perform causal operation on variable '{variable}' with value '{value}': model is not marked as causal.")]
+    NonCausalModel { 
+        /// The variable.
+        variable: String, 
+        /// The value.
+        value: String 
+    },
 
-    #[error(
-        "Cannot run inference: the model has not been validated.\n\
-         Validation errors:\n{errors}\n\
-         Hint: Call model.validate() to see all issues, \
-         or model.is_valid() to check without an error."
-    )]
-    InvalidModel { errors: String },
+    // Validation Errors
 
-    // Numerical Errors
+    /// Raised when the model is in an inconsistent state.
+    #[error("Model is invalid:\n{errors}")]
+    InvalidModel { 
+        /// Summary of all validation failures.
+        errors: String 
+    },
 
-    #[error(
-        "Numerical underflow detected during inference.\n\
-         This should not happen because Lutufi uses log-space arithmetic.\n\
-         If you see this error, please file a bug report with your model."
-    )]
+    // Computational Errors
+
+    /// Raised when a probability calculation results in zero due to precision limits.
+    #[error("Numerical underflow in probability calculation.")]
     NumericalUnderflow,
 
-    #[error(
-        "Factor product produced a result with infinite log-probability.\n\
-         This usually means a probability of exactly 0 was set somewhere \
-         and then evidence was set that requires it to be non-zero.\n\
-         Hint: Check for zero entries in your CPTs where evidence requires a non-zero value."
-    )]
+    /// Raised when taking the log of zero.
+    #[error("Attempted to compute log-probability of an event with zero probability.")]
     InfiniteLogProbability,
 
-    // I/O Errors 
+    // I/O and Serialization Errors
 
+    /// Raised when serializing a model to a file or string fails.
     #[error("Failed to serialize model: {reason}")]
-    SerializationError { reason: String },
+    SerializationError { 
+        /// The cause of the failure.
+        reason: String 
+    },
 
-    #[error("Failed to deserialize model: {reason}\nHint: Check that the file is a valid Lutufi model file (.lmf).")]
-    DeserializationError { reason: String },
+    /// Raised when loading a model from a file or string fails.
+    #[error("Failed to deserialize model: {reason}")]
+    DeserializationError { 
+        /// The cause of the failure.
+        reason: String 
+    },
 
-    // Internal Errors (should never reach users) 
+    // System Errors
 
+    /// Raised when an internal invariant is violated. Indicates a bug in Lutufi.
     #[error("Internal error: {message}\nThis is a bug in Lutufi. Please file a bug report.")]
-    InternalError { message: String },
+    InternalError { 
+        /// The error message.
+        message: String 
+    },
 }
 
 /// Convenience alias used throughout the codebase.

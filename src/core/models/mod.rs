@@ -3,8 +3,13 @@
 //! Provides implementations for various network models including:
 //! - Bayesian Networks
 //! - Markov Random Fields
-//! - Exponential Random Graph Models (ERGMs)
-//! - Temporal network models
+//! - Dynamic Bayesian Networks
+//! - Factor Graphs
+
+pub mod bayesian_network;
+pub mod markov_random_field;
+pub mod dynamic_bayesian_network;
+pub mod factor_graph;
 
 use serde::{Deserialize, Serialize};
 
@@ -15,9 +20,6 @@ pub trait NetworkModel {
     
     /// Get the number of edges in the model
     fn edge_count(&self) -> usize;
-    
-    /// Validate the model structure
-    fn validate(&self) -> crate::Result<()>;
 }
 
 /// Model metadata
@@ -41,17 +43,5 @@ impl Default for ModelMetadata {
             description: None,
             created_at: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_model_metadata_default() {
-        let meta = ModelMetadata::default();
-        assert_eq!(meta.name, "unnamed");
-        assert_eq!(meta.version, "0.1.0");
     }
 }

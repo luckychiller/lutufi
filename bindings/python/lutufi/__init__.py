@@ -32,10 +32,10 @@ except ImportError:
     Variable = None
     Domain = None
 
-from lutufi.models import NetworkModel
 from lutufi.inference import InferenceEngine
 from lutufi.learning import LearningEngine
 from lutufi.io import read_graph, write_graph
+from lutufi.models import BayesianNetwork, LutufiError, LutufiValidationError, LutufiNonCausalError
 
 __all__ = [
     "__version__",
@@ -45,7 +45,10 @@ __all__ = [
     "io",
     "Variable",
     "Domain",
-    "NetworkModel",
+    "BayesianNetwork",
+    "LutufiError",
+    "LutufiValidationError",
+    "LutufiNonCausalError",
     "InferenceEngine",
     "LearningEngine",
     "read_graph",

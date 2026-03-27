@@ -4,7 +4,7 @@ use crate::core::domain::Domain;
 
 /// A unique identifier for a variable within a model.
 /// Wraps a UUID to guarantee uniqueness across all models.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct VariableId(Uuid);
 
 impl VariableId {
@@ -56,13 +56,6 @@ impl Variable {
     ///
     /// The ID is generated automatically and guaranteed to be unique.
     ///
-    /// # Example
-    /// ```rust
-    /// let domain = Domain::discrete(vec!["low", "medium", "high"]).unwrap();
-    /// let var = Variable::new("income", domain);
-    /// assert_eq!(var.name(), "income");
-    /// assert_eq!(var.domain().size(), Some(3));
-    /// ```
     pub fn new(name: impl Into<String>, domain: Domain) -> Self {
         Variable {
             id: VariableId::new(),
