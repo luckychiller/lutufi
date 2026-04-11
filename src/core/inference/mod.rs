@@ -7,6 +7,9 @@
 //! - Variational inference
 //! - Exact inference for small networks
 
+pub mod variable_elimination;
+pub mod junction_tree;
+
 /// Trait for inference algorithms
 pub trait InferenceAlgorithm {
     /// Type for inference results

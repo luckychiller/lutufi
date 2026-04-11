@@ -2,6 +2,7 @@
 mod tests {
     use approx::assert_abs_diff_eq;
     use lutufi_core::core::{
+        assignment::Assignment,
         domain::Domain,
         factor::{TabularFactor, ConditionalProbabilityTable, Scope, log_sum_exp, Factor},
         variable::Variable,
@@ -39,20 +40,70 @@ mod tests {
     fn make_simple_factor() -> (Variable, Variable, TabularFactor) {
         let a = make_binary_var("A");
         let b = make_binary_var("B");
-        let scope = Scope::new(&[&a, &b]).unwrap();
-        // P(A=F, B=F)=0.1, P(A=F, B=T)=0.4, P(A=T, B=F)=0.2, P(A=T, B=T)=0.3
-        let factor = TabularFactor::from_values(scope, vec![0.1, 0.4, 0.2, 0.3]).unwrap();
+        let scope = Scope::new(vec![&a, &b]);
+        
+        // Ensure values match (A, B) order regardless of UUID order
+        let mut values = vec![0.0; 4];
+        let a_id = a.id();
+        let b_id = b.id();
+        
+        for i in 0..2 { // A
+            for j in 0..2 { // B
+                let mut assignment = Assignment::new();
+                assignment.set(a_id, i.to_string());
+                assignment.set(b_id, j.to_string());
+                
+                let flat_idx = project_indices_onto_scope(&assignment, &scope);
+                // P(A=F, B=F)=0.1, P(A=F, B=T)=0.4, P(A=T, B=F)=0.2, P(A=T, B=T)=0.3
+                values[flat_idx] = match (i, j) {
+                    (0, 0) => 0.1,
+                    (0, 1) => 0.4,
+                    (1, 0) => 0.2,
+                    (1, 1) => 0.3,
+                    _ => unreachable!(),
+                };
+            }
+        }
+        
+        let factor = TabularFactor::from_values(scope, values).unwrap();
         (a, b, factor)
+    }
+
+    fn project_indices_onto_scope(assignment: &Assignment, scope: &Scope) -> usize {
+        let mut flat = 0;
+        let mut stride = 1;
+        for i in (0..scope.len()).rev() {
+            let var_id = scope.variable_ids()[i];
+            let val = assignment.get_discrete(&var_id).unwrap();
+            flat += val * stride;
+            stride *= scope.sizes()[i];
+        }
+        flat
     }
 
     #[test]
     fn factor_evaluate_known_values() {
-        let (_, _, factor) = make_simple_factor();
-        // Check log-values were stored correctly
-        assert_abs_diff_eq!(factor.value_at(0), 0.1, epsilon = 1e-10);
-        assert_abs_diff_eq!(factor.value_at(1), 0.4, epsilon = 1e-10);
-        assert_abs_diff_eq!(factor.value_at(2), 0.2, epsilon = 1e-10);
-        assert_abs_diff_eq!(factor.value_at(3), 0.3, epsilon = 1e-10);
+        let (a, b, factor) = make_simple_factor();
+        
+        let mut assign_ff = Assignment::new();
+        assign_ff.set(a.id(), "0");
+        assign_ff.set(b.id(), "0");
+        assert_abs_diff_eq!(factor.evaluate(&assign_ff).unwrap(), 0.1, epsilon = 1e-10);
+
+        let mut assign_ft = Assignment::new();
+        assign_ft.set(a.id(), "0");
+        assign_ft.set(b.id(), "1");
+        assert_abs_diff_eq!(factor.evaluate(&assign_ft).unwrap(), 0.4, epsilon = 1e-10);
+
+        let mut assign_tf = Assignment::new();
+        assign_tf.set(a.id(), "1");
+        assign_tf.set(b.id(), "0");
+        assert_abs_diff_eq!(factor.evaluate(&assign_tf).unwrap(), 0.2, epsilon = 1e-10);
+
+        let mut assign_tt = Assignment::new();
+        assign_tt.set(a.id(), "1");
+        assign_tt.set(b.id(), "1");
+        assert_abs_diff_eq!(factor.evaluate(&assign_tt).unwrap(), 0.3, epsilon = 1e-10);
     }
 
     #[test]
@@ -61,8 +112,8 @@ mod tests {
         // Marginalizing B: P(A=F) = 0.1 + 0.4 = 0.5, P(A=T) = 0.2 + 0.3 = 0.5
         let marginal = factor.marginalize(&[b.id()]).unwrap();
         assert_eq!(marginal.scope().len(), 1); // Only A remains
-        assert_abs_diff_eq!(marginal.value_at(0), 0.5, epsilon = 1e-10); // P(A=F)
-        assert_abs_diff_eq!(marginal.value_at(1), 0.5, epsilon = 1e-10); // P(A=T)
+        assert_abs_diff_eq!(marginal.log_value_at(0).exp(), 0.5, epsilon = 1e-10); // P(A=F)
+        assert_abs_diff_eq!(marginal.log_value_at(1).exp(), 0.5, epsilon = 1e-10); // P(A=T)
     }
 
     #[test]
@@ -71,19 +122,19 @@ mod tests {
         // Marginalizing A: P(B=F) = 0.1 + 0.2 = 0.3, P(B=T) = 0.4 + 0.3 = 0.7
         let marginal = factor.marginalize(&[a.id()]).unwrap();
         assert_eq!(marginal.scope().len(), 1); // Only B remains
-        assert_abs_diff_eq!(marginal.value_at(0), 0.3, epsilon = 1e-10); // P(B=F)
-        assert_abs_diff_eq!(marginal.value_at(1), 0.7, epsilon = 1e-10); // P(B=T)
+        assert_abs_diff_eq!(marginal.log_value_at(0).exp(), 0.3, epsilon = 1e-10); // P(B=F)
+        assert_abs_diff_eq!(marginal.log_value_at(1).exp(), 0.7, epsilon = 1e-10); // P(B=T)
     }
 
     #[test]
     fn factor_normalize() {
         let a = make_binary_var("A");
-        let scope = Scope::new(&[&a]).unwrap();
+        let scope = Scope::new(vec![&a]);
         // Unnormalized: [2.0, 3.0]
-        let factor = TabularFactor::from_values(scope, vec![2.0, 3.0]).unwrap();
-        let normalized = factor.normalize().unwrap();
-        assert_abs_diff_eq!(normalized.value_at(0), 0.4, epsilon = 1e-10);
-        assert_abs_diff_eq!(normalized.value_at(1), 0.6, epsilon = 1e-10);
+        let mut factor = TabularFactor::from_values(scope, vec![2.0, 3.0]).unwrap();
+        factor.normalize();
+        assert_abs_diff_eq!(factor.value_at(0), 0.4, epsilon = 1e-10);
+        assert_abs_diff_eq!(factor.value_at(1), 0.6, epsilon = 1e-10);
     }
 
     #[test]
@@ -91,23 +142,39 @@ mod tests {
         let a = make_binary_var("A");
         let b = make_binary_var("B");
 
-        let scope1 = Scope::new(&[&a]).unwrap();
+        let scope1 = Scope::new(vec![&a]);
         let f1 = TabularFactor::from_values(scope1, vec![0.3, 0.7]).unwrap();
 
-        let scope2 = Scope::new(&[&b]).unwrap();
+        let scope2 = Scope::new(vec![&b]);
         let f2 = TabularFactor::from_values(scope2, vec![0.4, 0.6]).unwrap();
 
         // Product should have scope over both A and B
         let product = f1.multiply(&f2).unwrap();
         assert_eq!(product.scope().len(), 2);
+        
+        let mut assign_ff = Assignment::new();
+        assign_ff.set(a.id(), "0");
+        assign_ff.set(b.id(), "0");
         // P(A=F, B=F) = 0.3 * 0.4 = 0.12
-        assert_abs_diff_eq!(product.value_at(0), 0.12, epsilon = 1e-10);
+        assert_abs_diff_eq!(product.evaluate(&assign_ff).unwrap(), 0.12, epsilon = 1e-10);
+
+        let mut assign_ft = Assignment::new();
+        assign_ft.set(a.id(), "0");
+        assign_ft.set(b.id(), "1");
         // P(A=F, B=T) = 0.3 * 0.6 = 0.18
-        assert_abs_diff_eq!(product.value_at(1), 0.18, epsilon = 1e-10);
+        assert_abs_diff_eq!(product.evaluate(&assign_ft).unwrap(), 0.18, epsilon = 1e-10);
+
+        let mut assign_tf = Assignment::new();
+        assign_tf.set(a.id(), "1");
+        assign_tf.set(b.id(), "0");
         // P(A=T, B=F) = 0.7 * 0.4 = 0.28
-        assert_abs_diff_eq!(product.value_at(2), 0.28, epsilon = 1e-10);
+        assert_abs_diff_eq!(product.evaluate(&assign_tf).unwrap(), 0.28, epsilon = 1e-10);
+
+        let mut assign_tt = Assignment::new();
+        assign_tt.set(a.id(), "1");
+        assign_tt.set(b.id(), "1");
         // P(A=T, B=T) = 0.7 * 0.6 = 0.42
-        assert_abs_diff_eq!(product.value_at(3), 0.42, epsilon = 1e-10);
+        assert_abs_diff_eq!(product.evaluate(&assign_tt).unwrap(), 0.42, epsilon = 1e-10);
     }
 
     // CPT tests
@@ -156,7 +223,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("does not sum to 1"), "Error message was: {}", msg);
+        assert!(msg.contains("sums to 1.1"), "Error message was: {}", msg);
     }
 
     #[test]
@@ -190,6 +257,6 @@ mod tests {
         );
         assert!(result.is_err());
         let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("does not sum to 1"));
+        assert!(msg.contains("sums to 1.8"), "Error message was: {}", msg);
     }
 }

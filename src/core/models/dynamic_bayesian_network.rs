@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use crate::core::{
-    error::{LutufiError, LutufiResult},
+    error::LutufiResult,
     models::bayesian_network::BayesianNetwork,
-    variable::{Variable, VariableId},
 };
 
 /// A Dynamic Bayesian Network (DBN) — a two-slice temporal model.
@@ -14,6 +12,7 @@ pub struct DynamicBayesianNetwork {
 }
 
 impl DynamicBayesianNetwork {
+    /// Create a new, empty Dynamic Bayesian Network.
     pub fn new() -> Self {
         DynamicBayesianNetwork {
             prior: BayesianNetwork::new(),
@@ -21,6 +20,7 @@ impl DynamicBayesianNetwork {
         }
     }
 
+    /// Add a variable to the DBN.
     pub fn add_variable(&mut self, name: &str, domain: crate::core::domain::Domain) -> LutufiResult<()> {
         self.prior.add_variable(name, domain.clone())?;
         self.transition.add_variable(&format!("{}_t", name), domain.clone())?;
@@ -28,6 +28,7 @@ impl DynamicBayesianNetwork {
         Ok(())
     }
 
+    /// Add an edge within a single time slice.
     pub fn add_intraslice_edge(&mut self, from: &str, to: &str) -> LutufiResult<()> {
         self.prior.add_edge(from, to)?;
         self.transition.add_edge(&format!("{}_t", from), &format!("{}_t", to))?;
@@ -35,12 +36,14 @@ impl DynamicBayesianNetwork {
         Ok(())
     }
 
+    /// Add an edge between consecutive time slices (t -> t+1).
     pub fn add_interslice_edge(&mut self, from: &str, to: &str) -> LutufiResult<()> {
         self.transition.add_edge(&format!("{}_t", from), &format!("{}_t1", to))
     }
 
-    pub fn unroll(&self, t: usize) -> LutufiResult<BayesianNetwork> {
-        let mut unrolled = BayesianNetwork::new();
+    /// Unroll the DBN for T time slices into a static Bayesian Network.
+    pub fn unroll(&self, _t: usize) -> LutufiResult<BayesianNetwork> {
+        let unrolled = BayesianNetwork::new();
         // Simplified implementation for Phase 1
         Ok(unrolled)
     }

@@ -27,8 +27,8 @@ impl PyValidationResult {
 
 #[pyclass(name = "_RustBayesianNetwork")]
 pub struct PyBayesianNetwork {
-    inner: BayesianNetwork,
-    variable_registry: HashMap<String, Variable>,
+    pub(crate) inner: BayesianNetwork,
+    pub(crate) variable_registry: HashMap<String, Variable>,
 }
 
 #[pymethods]
@@ -90,6 +90,19 @@ impl PyBayesianNetwork {
     }
     pub fn is_valid(&self) -> bool { self.inner.is_valid() }
     pub fn mark_as_causal(&mut self) { self.inner.mark_as_causal(); }
+    pub fn d_separated(&self, a: &str, b: &str, given: Vec<String>) -> PyResult<bool> {
+        let given_refs: Vec<&str> = given.iter().map(|s| s.as_str()).collect();
+        self.inner.d_separated(a, b, &given_refs).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+    pub fn get_states(&self, variable_name: &str) -> PyResult<Vec<String>> {
+        let id = self.inner.id_of(variable_name).map_err(|e: crate::core::error::LutufiError| PyValueError::new_err(e.to_string()))?;
+        let var = self.inner.variables.get(&id).ok_or_else(|| PyValueError::new_err("Var not found"))?;
+        match var.domain() {
+            Domain::Discrete { states } => Ok(states.clone()),
+            Domain::Binary => Ok(vec!["false".to_string(), "true".to_string()]),
+            _ => Err(PyValueError::new_err("Variable domain is not discrete")),
+        }
+    }
     pub fn is_causal(&self) -> bool { self.inner.is_causal() }
 }
 

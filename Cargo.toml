@@ -63,8 +63,24 @@ name = "unit_error"
 path = "tests/unit/error_tests.rs"
 
 [[test]]
+name = "unit_log_space"
+path = "tests/unit/log_space_tests.rs"
+
+[[test]]
 name = "integration_model_construction"
 path = "tests/integration/model_construction.rs"
+
+[[test]]
+name = "unit_variable_elimination"
+path = "tests/unit/variable_elimination_tests.rs"
+
+[[test]]
+name = "unit_junction_tree"
+path = "tests/unit/junction_tree_tests.rs"
+
+[[test]]
+name = "unit_d_separation"
+path = "tests/unit/d_separation_tests.rs"
 
 # Benchmarks 
 [[bench]]

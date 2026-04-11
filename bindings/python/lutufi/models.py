@@ -174,6 +174,20 @@ class BayesianNetwork(NetworkModel):
     def is_causal(self) -> bool:
         return self._model.is_causal()
 
+    def d_separated(self, a: str, b: str, given: Optional[List[str]] = None) -> bool:
+        """
+        Test whether two variables are d-separated given a set of observed variables.
+        
+        Args:
+            a: Name of the first variable
+            b: Name of the second variable
+            given: Optional list of names of observed variables
+            
+        Returns:
+            True if a and b are d-separated, False otherwise.
+        """
+        return self._model.d_separated(a, b, given or [])
+
     def to_networkx(self):
         import networkx as nx
         G = nx.DiGraph()

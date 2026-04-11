@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use serde::{Deserialize, Serialize};
 use crate::core::{
     error::{LutufiError, LutufiResult},
@@ -15,7 +15,7 @@ use crate::core::{
 /// 2. CPT parent sets match the graph parent sets.
 /// 3. All CPT columns sum to 1 within 1e-6 tolerance.
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BayesianNetwork {
     /// The underlying graph structure.
     pub graph: DirectedVariableGraph,
@@ -156,6 +156,11 @@ impl BayesianNetwork {
         })
     }
 
+    /// Iterate over all CPTs in the network.
+    pub fn cpd_iter(&self) -> impl Iterator<Item = &ConditionalProbabilityTable> {
+        self.cpds.values()
+    }
+
     /// All variable names in topological order.
     ///
     /// # Errors
@@ -179,6 +184,87 @@ impl BayesianNetwork {
             .filter_map(|id| self.variables.get(id))
             .map(|v| v.name())
             .collect())
+    }
+
+    /// Test whether two variables are d-separated given a set of observed variables.
+    ///
+    /// Uses the Bayes Ball algorithm, which is O(V + E).
+    pub fn d_separated(&self, a: &str, b: &str, given: &[&str]) -> LutufiResult<bool> {
+        let a_id = self.id_of(a)?;
+        let b_id = self.id_of(b)?;
+
+        let given_ids: Result<HashSet<VariableId>, LutufiError> = given.iter()
+            .map(|&name| self.id_of(name))
+            .collect();
+        let given_ids = given_ids?;
+
+        if a_id == b_id {
+            return Ok(!given_ids.contains(&a_id));
+        }
+
+        // Precompute which nodes have observed descendants
+        let mut has_observed_descendant = HashSet::new();
+        let mut stack: Vec<VariableId> = given_ids.iter().cloned().collect();
+        while let Some(current) = stack.pop() {
+            if has_observed_descendant.insert(current) {
+                for parent in self.graph.parents(&current) {
+                    stack.push(parent);
+                }
+            }
+        }
+
+        #[derive(Hash, PartialEq, Eq, Clone, Copy)]
+        enum Direction { FromChild, FromParent }
+
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // Initial balls from 'a' as if they came from its (imaginary) children
+        queue.push_back((a_id, Direction::FromChild));
+
+        while let Some((u, dir)) = queue.pop_front() {
+            if visited.contains(&(u, dir)) {
+                continue;
+            }
+            visited.insert((u, dir));
+
+            if u == b_id {
+                return Ok(false); // Found an active path
+            }
+
+            let is_observed = given_ids.contains(&u);
+
+            match dir {
+                Direction::FromChild => {
+                    if is_observed {
+                        // Observed node blocks ball from children
+                    } else {
+                        // Non-observed node passes ball to parents and children
+                        for p in self.graph.parents(&u) {
+                            queue.push_back((p, Direction::FromChild));
+                        }
+                        for c in self.graph.children(&u) {
+                            queue.push_back((c, Direction::FromParent));
+                        }
+                    }
+                }
+                Direction::FromParent => {
+                    if is_observed {
+                        // Observed node reflects ball back to parents
+                        for p in self.graph.parents(&u) {
+                            queue.push_back((p, Direction::FromChild));
+                        }
+                    } else {
+                        // Non-observed node passes ball to children
+                        for c in self.graph.children(&u) {
+                            queue.push_back((c, Direction::FromParent));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(true)
     }
 
     /// All variable names in this network.
@@ -253,7 +339,7 @@ impl BayesianNetwork {
 
     // ── Internal helpers ───────────────────────────────────────────────
 
-    pub(crate) fn id_of(&self, name: &str) -> LutufiResult<VariableId> {
+    pub fn id_of(&self, name: &str) -> LutufiResult<VariableId> {
         self.name_to_id.get(name).copied().ok_or_else(|| {
             let available = self.name_to_id.keys()
                 .cloned()

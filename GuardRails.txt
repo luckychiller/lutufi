@@ -1,1 +1,25 @@
-1. Never use `unwrap()` in library code — always return `LutufiResult`.
+# Lutufi Library Guardrails
+
+## Technical & Architectural Guardrails
+0. Try to always use the most optimum algorithm for a given task instead of always greedy approaches
+1. Never use `unwrap()` in library code — always return `LutufiResult` or `Option`.
+2. Follow SOLID principles: prioritize composition over inheritance.
+3. Apply idiomatic design patterns (e.g., Builder for complex models, Strategy for inference engines).
+4. Maintain modularity: decompose large modules into logical sub-components to avoid "monolithic" files.
+5. Zero-copy integration: use the Buffer Protocol for NumPy/ndarray data exchange to maintain performance.
+
+## Scientific & Causal Integrity
+6. Correlation is not Causation: Never perform causal operations (`do()`, `counterfactual()`) on models not explicitly marked as causal (`mark_as_causal()`).
+7. Uncertainty Quantification: All inference results must include probabilistic measures; never return point estimates without an associated distribution.
+8. Validation First: Models must pass structural validity checks (e.g., DAG checks for BNs) before any inference is permitted.
+9. Reproducibility: Every model must be serializable into a standard format that captures structure, parameters, and metadata.
+
+## Ethical & Social Responsibility
+10. Data Privacy: Respect anonymity in social networks. The library should not facilitate deanonymization of individuals in aggregate datasets.
+11. Bias Awareness: Users should be warned that models learned from biased social data will propagate those biases.
+12. Adversarial Robustness: When analyzing "dark" or covert networks, the library must account for missing edges and nodes as a first-class citizen, not an edge case.
+13. Transparent Reasoning: Prioritize explainable inference paths over "black-box" predictions, especially in policy-making or financial contexts.
+
+## User Interface & Ergonomics
+14. Explicit over Implicit: Favor explicit algorithm selection for transparency in computational cost.
+15. Fail Fast: Validate input shapes and domains at the Python-Rust boundary before entering heavy computation.

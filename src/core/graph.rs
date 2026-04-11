@@ -1,6 +1,7 @@
-use petgraph::graph::{DiGraph, UnGraph, NodeIndex};
+use petgraph::stable_graph::{StableDiGraph, StableUnGraph, NodeIndex};
 use petgraph::algo::{is_cyclic_directed, toposort};
-use petgraph::visit::EdgeRef;
+use petgraph::visit::{EdgeRef, IntoEdgeReferences};
+use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::core::{
@@ -9,10 +10,10 @@ use crate::core::{
 };
 
 /// A directed graph where nodes are identified by VariableId.
-/// Wraps petgraph::DiGraph and maintains a mapping from VariableId to NodeIndex.
+/// Wraps petgraph::StableDiGraph and maintains a mapping from VariableId to NodeIndex.
 #[derive(Debug, Clone, Default)]
 pub struct DirectedVariableGraph {
-    graph: DiGraph<VariableId, ()>,
+    graph: StableDiGraph<VariableId, ()>,
     node_index: HashMap<VariableId, NodeIndex>,
     id_at_index: HashMap<NodeIndex, VariableId>,
 }
@@ -21,7 +22,7 @@ impl DirectedVariableGraph {
     /// Create a new, empty directed graph.
     pub fn new() -> Self {
         DirectedVariableGraph {
-            graph: DiGraph::new(),
+            graph: StableDiGraph::new(),
             node_index: HashMap::new(),
             id_at_index: HashMap::new(),
         }
@@ -58,7 +59,11 @@ impl DirectedVariableGraph {
         let edge = self.graph.add_edge(from_idx, to_idx, ());
         if is_cyclic_directed(&self.graph) {
             self.graph.remove_edge(edge);
-            return Err(LutufiError::CyclicGraph { from: from_name.to_string(), to: to_name.to_string(), cycle: format!("{} -> {}", from_name, to_name) });
+            return Err(LutufiError::CyclicGraph { 
+                from: from_name.to_string(), 
+                to: to_name.to_string(), 
+                cycle: format!("{} -> {}. If you need temporal cycles, use a DynamicBayesianNetwork (DBN).", from_name, to_name) 
+            });
         }
         Ok(())
     }
@@ -141,7 +146,7 @@ impl<'de> Deserialize<'de> for DirectedVariableGraph {
 /// An undirected graph where nodes are identified by VariableId.
 #[derive(Debug, Clone, Default)]
 pub struct UndirectedVariableGraph {
-    graph: UnGraph<VariableId, ()>,
+    graph: StableUnGraph<VariableId, ()>,
     node_index: HashMap<VariableId, NodeIndex>,
     id_at_index: HashMap<NodeIndex, VariableId>,
 }
@@ -150,7 +155,7 @@ impl UndirectedVariableGraph {
     /// Create a new, empty undirected graph.
     pub fn new() -> Self {
         UndirectedVariableGraph {
-            graph: UnGraph::new_undirected(),
+            graph: StableUnGraph::default(),
             node_index: HashMap::new(),
             id_at_index: HashMap::new(),
         }
@@ -210,10 +215,6 @@ impl Serialize for UndirectedVariableGraph {
     }
 }
 
-impl UndirectedVariableGraph {
-    fn node_ids(&self) -> Vec<VariableId> { self.node_index.keys().copied().collect() }
-}
-
 impl<'de> Deserialize<'de> for UndirectedVariableGraph {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {
         let (nodes, edges): (Vec<VariableId>, Vec<(VariableId, VariableId)>) = Deserialize::deserialize(deserializer)?;
@@ -222,4 +223,8 @@ impl<'de> Deserialize<'de> for UndirectedVariableGraph {
         for (v1, v2) in edges { g.add_edge(&v1, &v2); }
         Ok(g)
     }
+}
+
+impl UndirectedVariableGraph {
+    pub fn node_ids(&self) -> Vec<VariableId> { self.node_index.keys().copied().collect() }
 }
