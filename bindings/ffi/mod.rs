@@ -21,5 +21,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<models::PyValidationResult>()?;
     m.add_class::<inference::PyVariableEliminationEngine>()?;
     m.add_class::<inference::PyJunctionTreeEngine>()?;
+    m.add_class::<inference::PyLBPEngine>()?;
+    m.add_class::<inference::PyMCMCEngine>()?;
+    m.add_class::<inference::PyVariationalEngine>()?;
     Ok(())
 }

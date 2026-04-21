@@ -1,7 +1,6 @@
 use petgraph::stable_graph::{StableDiGraph, StableUnGraph, NodeIndex};
 use petgraph::algo::{is_cyclic_directed, toposort};
 use petgraph::visit::{EdgeRef, IntoEdgeReferences};
-use petgraph::Direction;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::core::{
@@ -226,5 +225,6 @@ impl<'de> Deserialize<'de> for UndirectedVariableGraph {
 }
 
 impl UndirectedVariableGraph {
+    /// Get all node IDs in the graph.
     pub fn node_ids(&self) -> Vec<VariableId> { self.node_index.keys().copied().collect() }
 }

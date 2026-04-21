@@ -12,10 +12,6 @@ mod tests {
         Variable::new(name, Domain::binary())
     }
 
-    fn make_discrete_var(name: &str, states: Vec<&str>) -> Variable {
-        Variable::new(name, Domain::discrete(states).unwrap())
-    }
-
     // log_sum_exp tests
 
     #[test]
@@ -108,7 +104,7 @@ mod tests {
 
     #[test]
     fn factor_marginalize_over_b() {
-        let (a, b, factor) = make_simple_factor();
+        let (_a, b, factor) = make_simple_factor();
         // Marginalizing B: P(A=F) = 0.1 + 0.4 = 0.5, P(A=T) = 0.2 + 0.3 = 0.5
         let marginal = factor.marginalize(&[b.id()]).unwrap();
         assert_eq!(marginal.scope().len(), 1); // Only A remains
@@ -118,7 +114,7 @@ mod tests {
 
     #[test]
     fn factor_marginalize_over_a() {
-        let (a, b, factor) = make_simple_factor();
+        let (a, _b, factor) = make_simple_factor();
         // Marginalizing A: P(B=F) = 0.1 + 0.2 = 0.3, P(B=T) = 0.4 + 0.3 = 0.7
         let marginal = factor.marginalize(&[a.id()]).unwrap();
         assert_eq!(marginal.scope().len(), 1); // Only B remains

@@ -9,12 +9,14 @@ use crate::core::{
 };
 
 /// A Factor Graph — a bipartite graph where nodes are either variables or factors.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactorGraph {
-    variables: HashMap<VariableId, Variable>,
-    factors: Vec<TabularFactor>,
+    /// Variables in the factor graph.
+    pub variables: HashMap<VariableId, Variable>,
+    /// Factors (potential functions) in the factor graph.
+    pub factors: Vec<TabularFactor>,
     /// Map from variable ID to indices of factors that involve it.
-    var_to_factors: HashMap<VariableId, Vec<usize>>,
+    pub var_to_factors: HashMap<VariableId, Vec<usize>>,
 }
 
 impl FactorGraph {

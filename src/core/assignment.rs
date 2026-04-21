@@ -66,8 +66,19 @@ impl Assignment {
     }
 
     /// Check whether a variable has been assigned.
+    pub fn contains(&self, variable: &VariableId) -> bool {
+        self.values.contains_key(variable)
+    }
+
+    /// Check whether a variable has been assigned.
     pub fn is_assigned(&self, variable: &VariableId) -> bool {
         self.values.contains_key(variable)
+    }
+
+    /// Set the discrete value index for a variable.
+    pub fn set_discrete(&mut self, variable: VariableId, value: usize) -> crate::core::error::LutufiResult<&mut Self> {
+        self.values.insert(variable, value.to_string());
+        Ok(self)
     }
 
     /// Remove the assignment for a variable.

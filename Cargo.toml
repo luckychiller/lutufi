@@ -11,8 +11,6 @@ repository = "https://github.com/luckychiller/lutufi"
 name = "lutufi_core"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
-# cdylib → .so/.dll for PyO3
-# rlib   → .rlib for Rust tests and benchmarks
 
 [dependencies]
 uuid         = { version = "1.6",  features = ["v4", "serde"] }
@@ -26,6 +24,9 @@ ordered-float = "3.0"
 indexmap     = "2.0"
 log          = "0.4"
 petgraph     = { version = "0.6", features = ["serde"] }
+rand         = "0.8"
+rand_distr   = "0.4"
+chrono       = "0.4"
 pyo3         = { version = "0.22", features = ["extension-module", "abi3-py39"], optional = true }
 
 [dev-dependencies]
@@ -79,14 +80,35 @@ name = "unit_junction_tree"
 path = "tests/unit/junction_tree_tests.rs"
 
 [[test]]
+name = "unit_lbp"
+path = "tests/unit/lbp_tests.rs"
+
+[[test]]
+name = "unit_mcmc"
+path = "tests/unit/mcmc_tests.rs"
+
+[[test]]
+name = "unit_variational"
+path = "tests/unit/variational_tests.rs"
+
+[[test]]
 name = "unit_d_separation"
 path = "tests/unit/d_separation_tests.rs"
+
+[[test]]
+name = "integration_inference_unification"
+path = "tests/integration/inference_unification.rs"
 
 # Benchmarks 
 [[bench]]
 name = "factor_operations"
 path = "benches/factor_operations.rs"
 harness = false
+
+# Scripts
+[[bin]]
+name = "benchmark_baseline"
+path = "scripts/benchmark_baseline.rs"
 
 # Release profile
 [profile.release]

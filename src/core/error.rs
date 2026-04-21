@@ -165,5 +165,27 @@ pub enum LutufiError {
     },
 }
 
+/// Non-fatal warnings for Lutufi operations.
+#[derive(Debug, Clone, Error)]
+pub enum LutufiWarning {
+    /// Raised when an iterative algorithm fails to converge.
+    #[error("Convergence warning in {algorithm}: failed to converge after {max_iterations} iterations. Residual: {residual}")]
+    ConvergenceWarning {
+        /// Name of the algorithm.
+        algorithm: String,
+        /// Maximum number of iterations reached.
+        max_iterations: usize,
+        /// Final residual value.
+        residual: f64,
+    },
+
+    /// Raised when a numerical issue is detected but handled.
+    #[error("Internal warning: {message}")]
+    InternalWarning {
+        /// The warning message.
+        message: String,
+    },
+}
+
 /// Convenience alias used throughout the codebase.
 pub type LutufiResult<T> = Result<T, LutufiError>;

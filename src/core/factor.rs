@@ -163,7 +163,23 @@ impl TabularFactor {
         self.log_value_at(index).exp()
     }
 
-    /// Access the scope of this factor.
+    /// Get the log-value of the factor at a specific assignment.
+    pub fn log_value_at_assignment(&self, assignment: &Assignment) -> LutufiResult<f64> {
+        let scope = self.scope();
+        let mut flat_idx = 0;
+        let mut stride = 1;
+
+        for i in 0..scope.len() {
+            let var_id = scope.variable_ids()[i];
+            let val_idx = assignment.get_discrete(&var_id)?;
+            flat_idx += val_idx * stride;
+            stride *= scope.sizes()[i];
+        }
+
+        Ok(self.log_value_at(flat_idx))
+    }
+
+    /// Access the scope of the factor.
     pub fn scope(&self) -> &Scope {
         match self {
             TabularFactor::Dense { scope, .. } => scope,

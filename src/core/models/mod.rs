@@ -6,9 +6,21 @@
 //! - Dynamic Bayesian Networks
 //! - Factor Graphs
 
+//! Probabilistic Graphical Models.
+//!
+//! This module provides the different model types supported by Lutufi:
+//! - Bayesian Networks (Directed Acyclic Graphs)
+//! - Markov Random Fields (Undirected Graphs)
+//! - Dynamic Bayesian Networks (Temporal Models)
+//! - Factor Graphs (Internal Representation)
+
+/// Bayesian Network implementation.
 pub mod bayesian_network;
+/// Markov Random Field implementation.
 pub mod markov_random_field;
+/// Dynamic Bayesian Network implementation.
 pub mod dynamic_bayesian_network;
+/// Factor Graph implementation.
 pub mod factor_graph;
 
 use serde::{Deserialize, Serialize};

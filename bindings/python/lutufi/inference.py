@@ -11,7 +11,7 @@ This module provides inference algorithms for network models including:
 from typing import Optional, Dict, List, Any, Union, Sequence
 import warnings
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -21,7 +21,8 @@ class InferenceOptions:
     Attributes:
         max_iterations: Maximum number of iterations
         tolerance: Convergence threshold
-        seed: Random seed for stochastic algorithms
+        seed: Optional[int]: Random seed for stochastic algorithms
+        treewidth_threshold: int: Threshold for raising a high-treewidth warning
     """
     max_iterations: int = 1000
     tolerance: float = 1e-6
@@ -54,6 +55,13 @@ class QueryResult:
     """Results of a probabilistic query.
 
     Provides convenient access to probability distributions and joint factors.
+    
+    Attributes:
+        variables (List[str]): Names of the queried variables.
+        distributions (Dict[str, np.ndarray]): Marginal distributions for each variable.
+        joint (Optional[np.ndarray]): The joint distribution if multiple variables were queried.
+        algorithm (str): The name of the algorithm used for the query.
+        diagnostics (Dict[str, Any]): Algorithm-specific diagnostic information.
     """
 
     def __init__(
@@ -63,12 +71,16 @@ class QueryResult:
         joint: Optional[np.ndarray] = None,
         state_names: Optional[Dict[str, List[str]]] = None,
         argmax: Optional[Dict[str, Any]] = None,
+        algorithm: Optional[str] = None,
+        diagnostics: Optional[Dict[str, Any]] = None,
     ):
         self.variables = variables
         self.distributions = distributions
         self.joint = joint
         self.state_names = state_names or {}
         self._argmax = argmax
+        self.algorithm = algorithm
+        self.diagnostics = diagnostics or {}
 
     def __getitem__(self, variable: str) -> np.ndarray:
         if variable == "__joint__":
@@ -82,9 +94,13 @@ class QueryResult:
             raise ImportError("pandas is required to convert QueryResult to a DataFrame") from e
 
         if self.joint is None:
+            # For single variable query
+            var_name = self.variables[0]
+            dist = self.distributions[var_name]
+            states = self.state_names.get(var_name, [str(i) for i in range(len(dist))])
             rows = [
-                {"state": i, "probability": float(dist)}
-                for i, dist in enumerate(next(iter(self.distributions.values())))
+                {"state": states[i], "probability": float(dist[i])}
+                for i in range(len(dist))
             ]
             return pd.DataFrame(rows)
 
@@ -93,7 +109,8 @@ class QueryResult:
         coords = np.stack(np.unravel_index(np.arange(entries.size), sizes), axis=-1)
         records = []
         for idx, coord in enumerate(coords):
-            row = {var: int(coord[i]) for i, var in enumerate(self.variables)}
+            row = {var: self.state_names.get(var, [str(i) for i in range(sizes[i])])[int(coord[i])] 
+                   for i, var in enumerate(self.variables)}
             row["probability"] = float(entries[idx])
             records.append(row)
         return pd.DataFrame(records)
@@ -103,7 +120,9 @@ class QueryResult:
             "variables": self.variables,
             "distributions": {k: v.tolist() for k, v in self.distributions.items()},
             "joint": self.joint.tolist() if self.joint is not None else None,
-            "argmax": self._argmax,
+            "argmax": self.most_probable(),
+            "algorithm": self.algorithm,
+            "diagnostics": self.diagnostics,
         }
 
     def most_probable(self) -> Dict[str, Any]:
@@ -122,10 +141,16 @@ try:
     from lutufi._lutufi import (
         _RustVariableEliminationEngine,
         _RustJunctionTreeEngine,
+        _RustLBPEngine,
+        _RustMCMCEngine,
+        _RustVariationalEngine,
     )
 except ImportError:
     _RustVariableEliminationEngine = None
     _RustJunctionTreeEngine = None
+    _RustLBPEngine = None
+    _RustMCMCEngine = None
+    _RustVariationalEngine = None
 
 class InferenceEngine:
     """Engine for performing probabilistic inference.
@@ -134,19 +159,24 @@ class InferenceEngine:
     on network models.
     """
     
-    def __init__(self, model: Any, algorithm: str = "variable_elimination"):
+    def __init__(self, model: Any, algorithm: str = "auto"):
         """Initialize the inference engine.
         
         Args:
             model: Network model to perform inference on
-            algorithm: Inference algorithm to use
+            algorithm: Inference algorithm to use ('auto', 'exact', 'lbp', 'mcmc', 'variational')
         """
         self._model = model
         self._algorithm = algorithm
         self._evidence: Dict[str, str] = {}
         self._options = InferenceOptions()
+        
+        # Initialize Rust engines
         self._rust_ve = _RustVariableEliminationEngine() if _RustVariableEliminationEngine else None
         self._rust_jt = _RustJunctionTreeEngine(self._model._model) if _RustJunctionTreeEngine else None
+        self._rust_lbp = _RustLBPEngine() if _RustLBPEngine else None
+        self._rust_mcmc = _RustMCMCEngine() if _RustMCMCEngine else None
+        self._rust_vi = _RustVariationalEngine() if _RustVariationalEngine else None
     
     @property
     def model(self) -> Any:
@@ -173,20 +203,15 @@ class InferenceEngine:
             node: Node name
             value: Observed value (index as int/str or state name)
         """
-        # If value is a string, check if it's a state name
         if isinstance(value, str):
             try:
-                # Try to parse as integer index first
                 int(value)
                 self._evidence[node] = value
             except ValueError:
-                # Not an integer, must be a state name
-                # We need to get the states from the model
-                states = self._model._model.get_states(node)
+                states = self._model.get_states(node)
                 if value in states:
                     self._evidence[node] = str(states.index(value))
                 else:
-                    # Fallback to original value (maybe it's an index as string)
                     self._evidence[node] = value
         else:
             self._evidence[node] = str(value)
@@ -194,30 +219,13 @@ class InferenceEngine:
     def clear_evidence(self) -> None:
         """Clear all evidence."""
         self._evidence.clear()
-    
-    def infer(self) -> InferenceResult:
-        """Run inference on the model.
-        
-        Returns:
-            Inference result containing marginals and convergence info
-        """
-        # Default to variable elimination if no specific infer method implemented
-        if self._algorithm == "variable_elimination":
-            return self._run_variable_elimination(list(self._model.nodes()))
-        
-        return InferenceResult(
-            marginals={},
-            iterations=0,
-            converged=False,
-            log_likelihood=None,
-        )
-    
+
     def query(
         self,
         variables: List[str],
         evidence: Optional[Dict[str, Any]] = None,
         algorithm: Optional[str] = None,
-        elimination_order: Optional[Optional[Union[str, List[str]]]] = None,
+        **kwargs
     ) -> QueryResult:
         """Query the marginal probabilities for specific variables.
 
@@ -225,10 +233,10 @@ class InferenceEngine:
             variables: List of variable names to query
             evidence: Optional dictionary of evidence
             algorithm: Optional algorithm name to override the default
-            elimination_order: Optional heuristic ("min_fill", "min_degree") or explicit list of variable names.
+            **kwargs: Algorithm-specific parameters (e.g., damping for LBP, n_samples for MCMC)
 
         Returns:
-            A QueryResult containing marginals, joint distributions, and support utilities.
+            A QueryResult containing marginals and diagnostics.
         """
         self.clear_evidence()
         if evidence:
@@ -237,72 +245,100 @@ class InferenceEngine:
 
         alg = algorithm or self._algorithm
         
-        if alg == "variable_elimination":
-            raw_result = self._run_variable_elimination(variables, elimination_order)
-            return self._build_query_result(raw_result, variables)
+        if alg == "auto":
+            alg = self._select_algorithm(variables)
 
+        if alg in ("exact", "variable_elimination"):
+            return self._query_ve(variables, kwargs.get("elimination_order"))
+        
         if alg == "junction_tree":
-            if not self._rust_jt:
-                raise RuntimeError("Lutufi native extension not loaded.")
-            raw_result = self._rust_jt.query(variables, self._evidence)
-            if self._rust_jt.treewidth() > self._options.treewidth_threshold:
-                warnings.warn(
-                    f"Treewidth {self._rust_jt.treewidth()} exceeds threshold {self._options.treewidth_threshold}.",
-                    LutufiHighTreewidthWarning,
-                )
-            return self._build_query_result(raw_result, variables)
+            return self._query_jt(variables)
+
+        if alg == "lbp":
+            return self._query_lbp(variables, **kwargs)
+
+        if alg == "mcmc":
+            return self._query_mcmc(variables, **kwargs)
+
+        if alg == "variational":
+            return self._query_vi(variables, **kwargs)
 
         raise ValueError(f"Unknown inference algorithm: {alg}")
 
-    def map_query(
-        self,
-        variables: List[str],
-        evidence: Optional[Dict[str, Any]] = None,
-        elimination_order: Optional[Union[str, List[str]]] = None,
-    ) -> QueryResult:
-        """Query the MAP assignment for a set of variables."""
-        self.clear_evidence()
-        if evidence:
-            for node, value in evidence.items():
-                self.set_evidence(node, value)
+    def _select_algorithm(self, variables: List[str]) -> str:
+        num_nodes = len(self._model.nodes())
+        if num_nodes <= 20:
+            return "exact"
+        
+        if self._rust_jt:
+            tw = self._rust_jt.treewidth()
+            if tw <= 15:
+                return "junction_tree"
+        
+        return "lbp"
 
-        if not self._rust_ve:
-            raise RuntimeError("Lutufi native extension not loaded.")
+    def _query_ve(self, variables: List[str], heuristic: Any) -> QueryResult:
+        if not self._rust_ve: raise RuntimeError("Native extension not loaded")
+        raw = self._rust_ve.query(self._model._model, variables, self._evidence, heuristic)
+        return self._build_query_result(raw, variables, "variable_elimination")
 
-        raw_result = self._rust_ve.query_map(
-            self._model._model,
-            variables,
-            self._evidence,
-            elimination_order,
-            "map",
+    def _query_jt(self, variables: List[str]) -> QueryResult:
+        if not self._rust_jt: raise RuntimeError("Native extension not loaded")
+        raw = self._rust_jt.query(variables, self._evidence)
+        if self._rust_jt.treewidth() > self._options.treewidth_threshold:
+            warnings.warn(f"High treewidth: {self._rust_jt.treewidth()}", LutufiHighTreewidthWarning)
+        return self._build_query_result(raw, variables, "junction_tree")
+
+    def _query_lbp(self, variables: List[str], **kwargs) -> QueryResult:
+        if not self._rust_lbp: raise RuntimeError("Native extension not loaded")
+        res = self._rust_lbp.query(
+            self._model._model, variables, self._evidence,
+            max_iterations=kwargs.get("max_iterations", self._options.max_iterations),
+            tolerance=kwargs.get("tolerance", self._options.tolerance),
+            damping=kwargs.get("damping", 0.5)
         )
-        return self._build_query_result(raw_result, variables)
-
-    def mpe_query(
-        self,
-        evidence: Optional[Dict[str, Any]] = None,
-        elimination_order: Optional[Union[str, List[str]]] = None,
-    ) -> QueryResult:
-        """Query the most probable explanation for all unobserved variables."""
-        self.clear_evidence()
-        if evidence:
-            for node, value in evidence.items():
-                self.set_evidence(node, value)
-
-        if not self._rust_ve:
-            raise RuntimeError("Lutufi native extension not loaded.")
-
-        variables = list(self._model.nodes())
-        raw_result = self._rust_ve.query_map(
-            self._model._model,
-            variables,
-            self._evidence,
-            elimination_order,
-            "mpe",
+        if not res["converged"]:
+            warnings.warn(f"LBP did not converge (residual: {res['residual']})", UserWarning)
+        
+        return QueryResult(
+            variables=variables,
+            distributions={v: np.array(d) for v, d in res["marginals"].items()},
+            state_names={v: self._model.get_states(v) for v in variables},
+            algorithm="lbp",
+            diagnostics={"converged": res["converged"], "iterations": res["iterations"], "residual": res["residual"]}
         )
-        return self._build_query_result(raw_result, variables)
 
-    def _build_query_result(self, raw_result: Dict[str, Any], variables: List[str]) -> QueryResult:
+    def _query_mcmc(self, variables: List[str], **kwargs) -> QueryResult:
+        if not self._rust_mcmc: raise RuntimeError("Native extension not loaded")
+        res = self._rust_mcmc.query(
+            self._model._model, variables, self._evidence,
+            n_samples=kwargs.get("n_samples", 1000),
+            burn_in=kwargs.get("burn_in", 100)
+        )
+        return QueryResult(
+            variables=variables,
+            distributions={v: np.array(d) for v, d in res["marginals"].items()},
+            state_names={v: self._model.get_states(v) for v in variables},
+            algorithm="mcmc",
+            diagnostics={"n_samples": res["n_samples"]}
+        )
+
+    def _query_vi(self, variables: List[str], **kwargs) -> QueryResult:
+        if not self._rust_vi: raise RuntimeError("Native extension not loaded")
+        res = self._rust_vi.query(
+            self._model._model, variables, self._evidence,
+            max_iterations=kwargs.get("max_iterations", 100),
+            tolerance=kwargs.get("tolerance", 1e-4)
+        )
+        return QueryResult(
+            variables=variables,
+            distributions={v: np.array(d) for v, d in res["marginals"].items()},
+            state_names={v: self._model.get_states(v) for v in variables},
+            algorithm="variational",
+            diagnostics={"converged": res["converged"], "elbo": res["elbo"]}
+        )
+
+    def _build_query_result(self, raw_result: Dict[str, Any], variables: List[str], alg: str) -> QueryResult:
         values = np.array(raw_result["values"])
         var_names = raw_result["variables"]
         shapes = [len(self._model.get_states(var)) for var in var_names]
@@ -318,17 +354,14 @@ class InferenceEngine:
                 distributions[var] = np.sum(joint, axis=axes)
 
         state_names = {var: self._model.get_states(var) for var in var_names}
-        argmax = None
-        if values.size > 0:
-            idx = int(np.argmax(values))
-            if len(var_names) == 1:
-                argmax = {var_names[0]: state_names[var_names[0]][idx]}
-            else:
-                unravel = np.unravel_index(idx, tuple(shapes))
-                argmax = {
-                    var_names[i]: state_names[var_names[i]][int(unravel[i])]
-                    for i in range(len(var_names))
-                }
+        
+        # Calculate argmax for convenient access
+        idx = int(np.argmax(values))
+        if len(var_names) == 1:
+            argmax = {var_names[0]: state_names[var_names[0]][idx]}
+        else:
+            unravel = np.unravel_index(idx, tuple(shapes))
+            argmax = {var_names[i]: state_names[var_names[i]][int(unravel[i])] for i in range(len(var_names))}
 
         return QueryResult(
             variables=var_names,
@@ -336,19 +369,16 @@ class InferenceEngine:
             joint=joint,
             state_names=state_names,
             argmax=argmax,
+            algorithm=alg
         )
 
-    def _run_variable_elimination(self, variables: List[str], heuristic: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
-        if not self._rust_ve:
-            raise RuntimeError("Lutufi native extension not loaded.")
+    def map_query(self, variables: List[str], evidence: Optional[Dict[str, Any]] = None) -> QueryResult:
+        """Compute the MAP assignment."""
+        return self.query(variables, evidence, algorithm="variable_elimination", mode="map")
 
-        raw_result = self._rust_ve.query(
-            self._model._model,
-            variables,
-            self._evidence,
-            heuristic,
-        )
-        return raw_result
+    def mpe_query(self, evidence: Optional[Dict[str, Any]] = None) -> QueryResult:
+        """Compute the MPE assignment."""
+        return self.query(list(self._model.nodes()), evidence, algorithm="variable_elimination", mode="mpe")
 
 
 class JunctionTreeEngine:
@@ -374,7 +404,20 @@ class JunctionTreeEngine:
     ) -> QueryResult:
         if evidence is None:
             evidence = {}
-        raw_result = self._engine.query(variables, evidence)
+        
+        # Convert evidence to string map for Rust
+        rust_evidence = {}
+        for node, value in evidence.items():
+            if isinstance(value, str):
+                states = self._model.get_states(node)
+                if value in states:
+                    rust_evidence[node] = str(states.index(value))
+                else:
+                    rust_evidence[node] = value
+            else:
+                rust_evidence[node] = str(value)
+
+        raw_result = self._engine.query(variables, rust_evidence)
         return self._build_query_result(raw_result, variables)
 
     def _build_query_result(self, raw_result: Dict[str, Any], variables: List[str]) -> QueryResult:
@@ -393,17 +436,13 @@ class JunctionTreeEngine:
                 distributions[var] = np.sum(joint, axis=axes)
 
         state_names = {var: self._model.get_states(var) for var in var_names}
-        argmax = None
-        if values.size > 0:
-            idx = int(np.argmax(values))
-            if len(var_names) == 1:
-                argmax = {var_names[0]: state_names[var_names[0]][idx]}
-            else:
-                unravel = np.unravel_index(idx, tuple(shapes))
-                argmax = {
-                    var_names[i]: state_names[var_names[i]][int(unravel[i])]
-                    for i in range(len(var_names))
-                }
+        
+        idx = int(np.argmax(values))
+        if len(var_names) == 1:
+            argmax = {var_names[0]: state_names[var_names[0]][idx]}
+        else:
+            unravel = np.unravel_index(idx, tuple(shapes))
+            argmax = {var_names[i]: state_names[var_names[i]][int(unravel[i])] for i in range(len(var_names))}
 
         return QueryResult(
             variables=var_names,
@@ -411,50 +450,21 @@ class JunctionTreeEngine:
             joint=joint,
             state_names=state_names,
             argmax=argmax,
+            algorithm="junction_tree",
+            diagnostics={"treewidth": self.treewidth}
         )
 
 
 class BeliefPropagation(InferenceEngine):
-    """Belief propagation algorithm implementation.
-    
-    Implements the sum-product algorithm for exact inference on
-    tree-structured networks.
-    """
-    
     def __init__(self, model: Any):
-        """Initialize belief propagation engine.
-        
-        Args:
-            model: Network model (must be tree-structured)
-        """
-        super().__init__(model, algorithm="belief_propagation")
+        super().__init__(model, algorithm="junction_tree")
 
 
 class LoopyBeliefPropagation(InferenceEngine):
-    """Loopy belief propagation algorithm implementation.
-    
-    Approximate inference algorithm for networks with loops.
-    """
-    
     def __init__(self, model: Any):
-        """Initialize loopy belief propagation engine.
-        
-        Args:
-            model: Network model
-        """
-        super().__init__(model, algorithm="loopy_belief_propagation")
+        super().__init__(model, algorithm="lbp")
 
 
 class GibbsSampler(InferenceEngine):
-    """Gibbs sampling algorithm implementation.
-    
-    Markov chain Monte Carlo method for approximate inference.
-    """
-    
     def __init__(self, model: Any):
-        """Initialize Gibbs sampler.
-        
-        Args:
-            model: Network model
-        """
-        super().__init__(model, algorithm="gibbs_sampling")
+        super().__init__(model, algorithm="mcmc")

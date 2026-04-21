@@ -7,67 +7,30 @@
 //! - Variational inference
 //! - Exact inference for small networks
 
+/// Exact inference using variable elimination.
 pub mod variable_elimination;
+/// Exact inference using junction trees.
 pub mod junction_tree;
+/// Approximate inference using Loopy Belief Propagation.
+pub mod lbp;
+/// Approximate inference using Markov Chain Monte Carlo.
+pub mod mcmc;
+/// Approximate inference using Variational Inference.
+pub mod variational;
+/// Unified inference engine.
+pub mod engine;
 
-/// Trait for inference algorithms
-pub trait InferenceAlgorithm {
-    /// Type for inference results
-    type Result;
-    
-    /// Run inference
-    fn infer(&mut self) -> crate::Result<Self::Result>;
-    
-    /// Set evidence for inference
-    fn set_evidence(&mut self, node: usize, value: usize) -> crate::Result<()>;
-    
-    /// Clear all evidence
-    fn clear_evidence(&mut self);
-}
+pub use engine::{Algorithm, InferenceResult, InferenceEngine, Diagnostics};
 
-/// Inference options
-#[derive(Debug, Clone, Copy)]
-pub struct InferenceOptions {
-    /// Maximum number of iterations
-    pub max_iterations: usize,
-    /// Convergence threshold
-    pub tolerance: f64,
-    /// Random seed for stochastic algorithms
-    pub seed: Option<u64>,
-}
-
-impl Default for InferenceOptions {
-    fn default() -> Self {
-        Self {
-            max_iterations: 1000,
-            tolerance: 1e-6,
-            seed: None,
-        }
-    }
-}
-
-/// Inference result
+/// Inference result (Legacy, for backward compatibility during Phase 3)
 #[derive(Debug, Clone)]
-pub struct InferenceResult {
-    /// Marginal probabilities for each node
+pub struct LegacyInferenceResult {
+    /// Marginal probabilities.
     pub marginals: Vec<Vec<f64>>,
-    /// Number of iterations performed
+    /// Number of iterations.
     pub iterations: usize,
-    /// Whether the algorithm converged
+    /// Whether the algorithm converged.
     pub converged: bool,
-    /// Log-likelihood (if available)
+    /// Final log-likelihood.
     pub log_likelihood: Option<f64>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_inference_options_default() {
-        let opts = InferenceOptions::default();
-        assert_eq!(opts.max_iterations, 1000);
-        assert_eq!(opts.tolerance, 1e-6);
-        assert!(opts.seed.is_none());
-    }
 }

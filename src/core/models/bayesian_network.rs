@@ -329,6 +329,16 @@ impl BayesianNetwork {
         self.is_causal
     }
 
+    /// Perform a query on the network.
+    pub fn query(
+        &self,
+        variables: &[&str],
+        evidence: &crate::core::assignment::Assignment,
+        algorithm: crate::core::inference::Algorithm,
+    ) -> LutufiResult<crate::core::inference::InferenceResult> {
+        crate::core::inference::InferenceEngine::query(self, variables, evidence, algorithm)
+    }
+
     /// Convert this network to a Factor Graph representation.
     ///
     /// # Errors
@@ -339,6 +349,10 @@ impl BayesianNetwork {
 
     // ── Internal helpers ───────────────────────────────────────────────
 
+    /// Get the unique ID of a variable by its name.
+    ///
+    /// # Errors
+    /// Returns `LutufiError::VariableNotFound` if the variable doesn't exist.
     pub fn id_of(&self, name: &str) -> LutufiResult<VariableId> {
         self.name_to_id.get(name).copied().ok_or_else(|| {
             let available = self.name_to_id.keys()
