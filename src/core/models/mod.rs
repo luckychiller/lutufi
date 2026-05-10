@@ -22,6 +22,8 @@ pub mod causal_model;
 pub mod markov_random_field;
 /// Dynamic Bayesian Network implementation.
 pub mod dynamic_bayesian_network;
+/// Non-stationary DBN implementation.
+pub mod non_stationary;
 /// Factor Graph implementation.
 pub mod factor_graph;
 /// Network registry implementation.

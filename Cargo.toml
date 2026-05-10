@@ -105,6 +105,10 @@ name = "unit_causal"
 path = "tests/unit/causal_tests.rs"
 
 [[test]]
+name = "unit_missing_data"
+path = "tests/unit/missing_data_tests.rs"
+
+[[test]]
 name = "integration_inference_unification"
 path = "tests/integration/inference_unification.rs"
 

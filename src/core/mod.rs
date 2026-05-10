@@ -29,6 +29,8 @@ pub mod assignment;
 pub mod factor;
 /// Module for graph structures (directed and undirected)
 pub mod graph;
+/// Module for missing data handling (Phase 7)
+pub mod missing_data;
 
 /// Re-export commonly used types
 pub use models::*;

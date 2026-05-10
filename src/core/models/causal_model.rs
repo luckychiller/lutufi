@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use crate::core::{
     error::{LutufiError, LutufiResult},
@@ -16,6 +16,7 @@ pub struct CausalModel {
 }
 
 impl CausalModel {
+    /// Create a new causal model wrapping a Bayesian network.
     pub fn new(mut network: BayesianNetwork) -> Self {
         network.mark_as_causal();
         CausalModel {
@@ -315,6 +316,7 @@ impl CausalModel {
     }
 
     /// Compute variables in a subgraph of G restricted to a set of variables.
+    #[allow(dead_code)]
     fn subgraph_over(&self, ids: &HashSet<VariableId>) -> DirectedVariableGraph {
         let mut sub = DirectedVariableGraph::new();
         for &id in ids {
@@ -341,6 +343,7 @@ impl CausalModel {
     }
 
     /// Check if X has any ancestors in G_X̅ (graph with incoming edges to intervention vars removed).
+    #[allow(dead_code)]
     fn ancestors_of_intervention(&self, interventions: &HashSet<VariableId>) -> HashSet<VariableId> {
         self.ancestors_in_mutilated(interventions, interventions)
     }
@@ -417,7 +420,7 @@ impl CausalModel {
 
     /// Recursive ID algorithm.
     fn id_recursive(&self, targets: &HashSet<VariableId>, interventions: &HashSet<VariableId>, depth: usize) -> LutufiResult<IdResult> {
-        let indent = "  ".repeat(depth);
+        let _indent = "  ".repeat(depth);
         let all_vars = self.all_var_ids();
 
         // Step 1: If no interventions, sum over non-targets
@@ -434,7 +437,7 @@ impl CausalModel {
         }
 
         // Step 2: Remove variables that are not ancestors of targets in G_X̅
-        let mut remove_incoming = interventions.clone();
+        let remove_incoming = interventions.clone();
         let ancestors = self.ancestors_in_mutilated(targets, &remove_incoming);
         let non_ancestors: HashSet<VariableId> = all_vars.difference(&ancestors).copied().collect();
         if !non_ancestors.is_empty() {
@@ -626,7 +629,7 @@ impl CausalModel {
         let t_var = self.network.registry().variable(&t_id).ok_or_else(|| LutufiError::VariableNotFound {
             name: treatment.to_string(), available: "".to_string(),
         })?;
-        let t_idx = t_var.domain().index_of(treatment_value).ok_or_else(|| LutufiError::ValueNotInDomain {
+        let _t_idx = t_var.domain().index_of(treatment_value).ok_or_else(|| LutufiError::ValueNotInDomain {
             value: treatment_value.to_string(), variable: treatment.to_string(),
             valid_values: format!("{:?}", t_var.domain()),
         })?;
@@ -641,7 +644,7 @@ impl CausalModel {
 
         // Compute P(Y=y | do(X=x')) via mutilated inference
         let mut ref_intervention = Assignment::new();
-        let ref_idx = t_var.domain().index_of(reference_value).ok_or_else(|| LutufiError::ValueNotInDomain {
+        let _ref_idx = t_var.domain().index_of(reference_value).ok_or_else(|| LutufiError::ValueNotInDomain {
             value: reference_value.to_string(), variable: treatment.to_string(),
             valid_values: format!("{:?}", t_var.domain()),
         })?;
@@ -675,7 +678,7 @@ impl CausalModel {
         let t_var = self.network.registry().variable(&t_id).ok_or_else(|| LutufiError::VariableNotFound {
             name: treatment.to_string(), available: "".to_string(),
         })?;
-        let ref_idx = t_var.domain().index_of(reference_value).ok_or_else(|| LutufiError::ValueNotInDomain {
+        let _ref_idx = t_var.domain().index_of(reference_value).ok_or_else(|| LutufiError::ValueNotInDomain {
             value: reference_value.to_string(), variable: treatment.to_string(),
             valid_values: format!("{:?}", t_var.domain()),
         })?;
@@ -691,7 +694,7 @@ impl CausalModel {
         }
 
         // Compute P(Y=y | do(X=x)) via mutilated inference
-        let treat_idx = t_var.domain().index_of(treatment_value).ok_or_else(|| LutufiError::ValueNotInDomain {
+        let _treat_idx = t_var.domain().index_of(treatment_value).ok_or_else(|| LutufiError::ValueNotInDomain {
             value: treatment_value.to_string(), variable: treatment.to_string(),
             valid_values: format!("{:?}", t_var.domain()),
         })?;

@@ -129,8 +129,12 @@ impl SkeletonDiscovery {
             }
 
             for (u, v) in edges_to_remove {
-                adjacency.get_mut(&u).unwrap().remove(&v);
-                adjacency.get_mut(&v).unwrap().remove(&u);
+                if let Some(neighbors) = adjacency.get_mut(&u) {
+                    neighbors.remove(&v);
+                }
+                if let Some(neighbors) = adjacency.get_mut(&v) {
+                    neighbors.remove(&u);
+                }
             }
 
             if !any_neighbor_size_ge_k || k > 5 {
@@ -477,8 +481,12 @@ impl ConstraintBasedLearner {
             }
 
             for (u, v) in edges_to_remove {
-                adjacency.get_mut(&u).unwrap().remove(&v);
-                adjacency.get_mut(&v).unwrap().remove(&u);
+                if let Some(neighbors) = adjacency.get_mut(&u) {
+                    neighbors.remove(&v);
+                }
+                if let Some(neighbors) = adjacency.get_mut(&v) {
+                    neighbors.remove(&u);
+                }
             }
 
             if !any_neighbor_size_ge_k || k > 5 { break; }
@@ -493,7 +501,7 @@ impl ConstraintBasedLearner {
         &self,
         skeleton: &FciSkeleton,
         node_names: &[String],
-        data: &[HashMap<String, String>],
+        _data: &[HashMap<String, String>],
     ) -> LutufiResult<PagGraph> {
         let mut pag = PagGraph::new(node_names);
         for u in node_names {
@@ -527,7 +535,7 @@ impl ConstraintBasedLearner {
     }
 
     /// Apply FCI orientation rules R1-R4 to propagate edge marks.
-    fn fci_apply_rules(&self, pag: &mut PagGraph, node_names: &[String]) {
+    fn fci_apply_rules(&self, pag: &mut PagGraph, _node_names: &[String]) {
         loop {
             let mut changed = false;
             let edges: Vec<(String, String)> = pag.edges();
@@ -541,8 +549,8 @@ impl ConstraintBasedLearner {
 
                 for b in pag.neighbors(a) {
                     if pag.has_edge(a, &b) && pag.has_edge(&b, c) {
-                        let (mark_a_b, mark_b_a) = pag.get_edge_marks(a, &b);
-                        let (mark_b_c, mark_c_b) = pag.get_edge_marks(&b, c);
+                        let (mark_a_b, _mark_b_a) = pag.get_edge_marks(a, &b);
+                        let (mark_b_c, _mark_c_b) = pag.get_edge_marks(&b, c);
                         let a_adj_c = pag.has_edge(a, c);
 
                         if mark_a_b == PagEdgeMark::Arrow && !a_adj_c {
@@ -561,7 +569,7 @@ impl ConstraintBasedLearner {
                 for b in pag.neighbors(a) {
                     if !pag.has_edge(a, &b) || !pag.has_edge(&b, c) { continue; }
                     let (mark_a_b, mark_b_a) = pag.get_edge_marks(a, &b);
-                    let (mark_b_c, mark_c_b) = pag.get_edge_marks(&b, c);
+                    let (mark_b_c, _mark_c_b) = pag.get_edge_marks(&b, c);
 
                     if mark_a_b == PagEdgeMark::Arrow && mark_b_a == PagEdgeMark::Tail
                         && mark_b_c == PagEdgeMark::Circle
@@ -581,7 +589,7 @@ impl ConstraintBasedLearner {
                 for b in pag.neighbors(a) {
                     if !pag.has_edge(a, &b) || !pag.has_edge(&b, c) { continue; }
                     let (mark_a_b, mark_b_a) = pag.get_edge_marks(a, &b);
-                    let (mark_b_c, mark_c_b) = pag.get_edge_marks(&b, c);
+                    let (mark_b_c, _mark_c_b) = pag.get_edge_marks(&b, c);
 
                     if mark_b_a == PagEdgeMark::Arrow && mark_b_c == PagEdgeMark::Arrow
                         && !pag.has_edge(a, c)
@@ -600,7 +608,7 @@ impl ConstraintBasedLearner {
                 for b in pag.neighbors(a) {
                     if !pag.has_edge(a, &b) || !pag.has_edge(&b, c) { continue; }
                     let (mark_a_b, mark_b_a) = pag.get_edge_marks(a, &b);
-                    let (mark_b_c, mark_c_b) = pag.get_edge_marks(&b, c);
+                    let (_mark_b_c, mark_c_b) = pag.get_edge_marks(&b, c);
 
                     if mark_a_b == PagEdgeMark::Arrow && mark_b_a == PagEdgeMark::Tail
                         && mark_c_b == PagEdgeMark::Circle

@@ -205,7 +205,7 @@ impl DataCollector {
                 scope.variable_ids(),
                 &parents,
                 &parent_sizes,
-            );
+            )?;
             matrix[child_state][parent_config] = counts[i];
         }
 

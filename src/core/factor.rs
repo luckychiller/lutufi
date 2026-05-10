@@ -230,8 +230,8 @@ impl TabularFactor {
 
         for i in 0..new_scope.num_entries() {
             let combined_indices = multi_index_from_flat(i, new_scope.sizes());
-            let idx_self = project_indices(&combined_indices, new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes());
-            let idx_other = project_indices(&combined_indices, new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes());
+            let idx_self = project_indices(&combined_indices, new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes())?;
+            let idx_other = project_indices(&combined_indices, new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes())?;
             new_log_table.push(self.log_value_at(idx_self) + other.log_value_at(idx_other));
         }
 
@@ -262,7 +262,7 @@ impl TabularFactor {
 
         for i in 0..current_scope.num_entries() {
             let full_indices = multi_index_from_flat(i, current_scope.sizes());
-            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes());
+            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes())?;
             new_log_table[new_idx] = log_sum_exp(new_log_table[new_idx], self.log_value_at(i));
         }
         
@@ -293,7 +293,7 @@ impl TabularFactor {
 
         for i in 0..current_scope.num_entries() {
             let full_indices = multi_index_from_flat(i, current_scope.sizes());
-            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes());
+            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes())?;
             new_log_table[new_idx] = new_log_table[new_idx].max(self.log_value_at(i));
         }
 
@@ -359,7 +359,7 @@ impl TabularFactor {
             TabularFactor::Dense { log_table, .. } => {
                 let mut max_log = f64::NEG_INFINITY;
                 for &v in log_table.iter() { if v > max_log { max_log = v; } }
-                if max_log == f64::NEG_INFINITY {
+                if max_log.is_infinite() && max_log.is_sign_negative() {
                     return;
                 }
 
@@ -371,7 +371,7 @@ impl TabularFactor {
             TabularFactor::Sparse { log_entries, .. } => {
                 let mut max_log = f64::NEG_INFINITY;
                 for &v in log_entries.values() { if v > max_log { max_log = v; } }
-                if max_log == f64::NEG_INFINITY {
+                if max_log.is_infinite() && max_log.is_sign_negative() {
                     return;
                 }
 
@@ -435,8 +435,8 @@ impl Factor for TabularFactor {
 
         for i in 0..new_scope.num_entries() {
             let combined_indices = multi_index_from_flat(i, new_scope.sizes());
-            let idx_self = project_indices(&combined_indices, new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes());
-            let idx_other = project_indices(&combined_indices, new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes());
+            let idx_self = project_indices(&combined_indices, new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes())?;
+            let idx_other = project_indices(&combined_indices, new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes())?;
             new_log_table.push(self.log_value_at(idx_self) + other.log_value_at(idx_other));
         }
 
@@ -458,8 +458,8 @@ impl Factor for TabularFactor {
 
 /// Log-sum-exp trick for numerically stable addition of probabilities in log-space.
 pub fn log_sum_exp(a: f64, b: f64) -> f64 {
-    if a == f64::NEG_INFINITY { return b; }
-    if b == f64::NEG_INFINITY { return a; }
+    if a.is_infinite() && a.is_sign_negative() { return b; }
+    if b.is_infinite() && b.is_sign_negative() { return a; }
     let max = a.max(b);
     max + ((a - max).exp() + (b - max).exp()).ln()
 }
@@ -476,16 +476,24 @@ pub fn multi_index_from_flat(flat: usize, sizes: &[usize]) -> Vec<usize> {
 }
 
 /// Project a full configuration's index onto a sub-scope.
-pub fn project_indices(full_indices: &[usize], full_vars: &[VariableId], sub_vars: &[VariableId], sub_sizes: &[usize]) -> usize {
+pub fn project_indices(
+    full_indices: &[usize],
+    full_vars: &[VariableId],
+    sub_vars: &[VariableId],
+    sub_sizes: &[usize],
+) -> LutufiResult<usize> {
     let mut flat = 0;
     let mut stride = 1;
     for i in (0..sub_vars.len()).rev() {
         let var_id = sub_vars[i];
-        let full_pos = full_vars.iter().position(|&id| id == var_id).unwrap();
+        let full_pos = full_vars.iter().position(|&id| id == var_id)
+            .ok_or_else(|| LutufiError::InternalError {
+                message: format!("Variable {:?} not found in full scope for projection", var_id),
+            })?;
         flat += full_indices[full_pos] * stride;
         stride *= sub_sizes[i];
     }
-    flat
+    Ok(flat)
 }
 
 /// A specialized factor for Bayesian Networks.
@@ -564,7 +572,7 @@ impl ConditionalProbabilityTable {
                     scope.variable_ids(),
                     original_scope.variable_ids(),
                     original_scope.sizes(),
-                );
+                )?;
                 reordered[i] = flat_values[original_index];
             }
             reordered

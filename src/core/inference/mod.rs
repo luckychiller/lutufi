@@ -27,6 +27,8 @@ pub mod strategy_factory;
 pub mod engine;
 /// Configuration for inference algorithm selection.
 pub mod config;
+/// DBN inference algorithms (filtering, smoothing, prediction, HMM, Kalman).
+pub mod dbn;
 
 pub use config::InferenceConfig;
 pub use engine::{InferenceResult, InferenceEngine};
