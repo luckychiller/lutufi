@@ -5,6 +5,7 @@ This package provides Python bindings for the Lutufi Rust core, offering:
 - Probabilistic inference on network structures
 - Learning network parameters from data
 - I/O operations for network formats
+- Causal inference via do-calculus
 
 Example:
     >>> import lutufi
@@ -23,7 +24,6 @@ try:
         Domain,
     )
 except ImportError:
-    # Fallback when the Rust extension is not built
     __version__ = "0.1.0-dev"
     models = None
     inference = None
@@ -33,46 +33,70 @@ except ImportError:
     Domain = None
 
 from lutufi.inference import (
-    InferenceEngine, 
-    QueryResult, 
-    JunctionTreeEngine, 
+    InferenceEngine,
+    QueryResult,
+    LazyQueryResult,
+    InferenceResult,
+    InferenceMetadata,
+    InferenceOptions,
+    JunctionTreeEngine,
     LutufiHighTreewidthWarning,
     BeliefPropagation,
     LoopyBeliefPropagation,
     GibbsSampler,
+    VariationalInference,
 )
 from lutufi.learning import ParameterEstimator, StructureLearner, fit, learn_structure
 from lutufi.io import read_graph, write_graph
 from lutufi.models import (
-    BayesianNetwork, 
-    MarkovRandomField, 
+    BayesianNetwork,
+    MarkovRandomField,
     DynamicBayesianNetwork,
-    LutufiError, 
-    LutufiValidationError, 
+    BayesianNetworkBuilder,
+    LutufiError,
+    LutufiValidationError,
     LutufiNonCausalError,
+    LutufiCyclicGraphError,
+    LutufiNotIdentifiableError,
+    LutufiNumericalError,
+    LutufiResourceLimitError,
+    LutufiSerializationError,
+    LutufiMissingDataError,
+    LutufiConvergenceWarning,
+    NetworkModel,
 )
 
 __all__ = [
     "__version__",
-    "models",
-    "inference",
-    "learning",
-    "io",
     "Variable",
     "Domain",
     "BayesianNetwork",
     "MarkovRandomField",
     "DynamicBayesianNetwork",
+    "BayesianNetworkBuilder",
+    "NetworkModel",
     "LutufiError",
     "LutufiValidationError",
     "LutufiNonCausalError",
+    "LutufiCyclicGraphError",
+    "LutufiNotIdentifiableError",
+    "LutufiNumericalError",
+    "LutufiResourceLimitError",
+    "LutufiSerializationError",
+    "LutufiMissingDataError",
+    "LutufiConvergenceWarning",
+    "LutufiHighTreewidthWarning",
     "InferenceEngine",
+    "InferenceResult",
+    "InferenceMetadata",
+    "InferenceOptions",
+    "QueryResult",
+    "LazyQueryResult",
+    "JunctionTreeEngine",
     "BeliefPropagation",
     "LoopyBeliefPropagation",
     "GibbsSampler",
-    "QueryResult",
-    "JunctionTreeEngine",
-    "LutufiHighTreewidthWarning",
+    "VariationalInference",
     "ParameterEstimator",
     "StructureLearner",
     "fit",
