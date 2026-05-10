@@ -244,7 +244,7 @@ impl LBPEngine {
 
     fn apply_damping(&self, old: &TabularFactor, new: &TabularFactor) -> LutufiResult<TabularFactor> {
         let d = self.options.damping;
-        if d == 0.0 { return Ok(new.clone()); }
+        if d.abs() < 1e-12 { return Ok(new.clone()); }
         
         let scope = old.scope().clone();
         let n = scope.num_entries();

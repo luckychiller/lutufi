@@ -171,9 +171,9 @@ class InferenceEngine:
         self._evidence: Dict[str, str] = {}
         self._options = InferenceOptions()
         
-        # Initialize Rust engines
+        # Initialize Rust engines (lazy where compilation is required)
         self._rust_ve = _RustVariableEliminationEngine() if _RustVariableEliminationEngine else None
-        self._rust_jt = _RustJunctionTreeEngine(self._model._model) if _RustJunctionTreeEngine else None
+        self._rust_jt = None  # Created lazily when junction tree algorithm is needed
         self._rust_lbp = _RustLBPEngine() if _RustLBPEngine else None
         self._rust_mcmc = _RustMCMCEngine() if _RustMCMCEngine else None
         self._rust_vi = _RustVariationalEngine() if _RustVariationalEngine else None
@@ -188,6 +188,12 @@ class InferenceEngine:
         """Get the inference algorithm name."""
         return self._algorithm
     
+    def _get_jt_engine(self):
+        """Lazily initialize and return the Junction Tree engine."""
+        if self._rust_jt is None and _RustJunctionTreeEngine is not None:
+            self._rust_jt = _RustJunctionTreeEngine(self._model._model)
+        return self._rust_jt
+
     def set_options(self, options: InferenceOptions) -> None:
         """Set inference options.
         
@@ -270,8 +276,9 @@ class InferenceEngine:
         if num_nodes <= 20:
             return "exact"
         
-        if self._rust_jt:
-            tw = self._rust_jt.treewidth()
+        jt = self._get_jt_engine()
+        if jt:
+            tw = jt.treewidth()
             if tw <= 15:
                 return "junction_tree"
         
@@ -283,10 +290,11 @@ class InferenceEngine:
         return self._build_query_result(raw, variables, "variable_elimination")
 
     def _query_jt(self, variables: List[str]) -> QueryResult:
-        if not self._rust_jt: raise RuntimeError("Native extension not loaded")
-        raw = self._rust_jt.query(variables, self._evidence)
-        if self._rust_jt.treewidth() > self._options.treewidth_threshold:
-            warnings.warn(f"High treewidth: {self._rust_jt.treewidth()}", LutufiHighTreewidthWarning)
+        jt = self._get_jt_engine()
+        if not jt: raise RuntimeError("Native extension not loaded")
+        raw = jt.query(variables, self._evidence)
+        if jt.treewidth() > self._options.treewidth_threshold:
+            warnings.warn(f"High treewidth: {jt.treewidth()}", LutufiHighTreewidthWarning)
         return self._build_query_result(raw, variables, "junction_tree")
 
     def _query_lbp(self, variables: List[str], **kwargs) -> QueryResult:

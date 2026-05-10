@@ -76,7 +76,7 @@ Changelog = "https://github.com/lutufi/lutufi/blob/main/CHANGELOG.md"
 manifest-path = "Cargo.toml"
 python-source = "bindings/python"
 module-name = "lutufi._lutufi"
-features = ["pyo3/extension-module"]
+features = ["python"]
 
 [tool.black]
 line-length = 88

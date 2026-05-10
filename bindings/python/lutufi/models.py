@@ -97,6 +97,9 @@ class BayesianNetwork(NetworkModel):
         super().__init__()
         self._model = _rust_model
 
+    def get_states(self, variable_name: str) -> List[str]:
+        return self._model.get_states(variable_name)
+
     @classmethod
     def builder(cls) -> "BayesianNetworkBuilder":
         return BayesianNetworkBuilder()

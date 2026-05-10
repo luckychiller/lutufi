@@ -54,7 +54,7 @@ impl PyJunctionTreeEngine {
         let mut rust_evidence = Assignment::new();
         if let Some(map) = evidence {
             for (name, val) in map {
-                let var_id = engine.model.id_of(&name).map_err(|e: crate::core::error::LutufiError| PyValueError::new_err(e.to_string()))?;
+                let var_id = engine.model().id_of(&name).map_err(|e: crate::core::error::LutufiError| PyValueError::new_err(e.to_string()))?;
                 rust_evidence.set(var_id, val);
             }
         }
@@ -69,7 +69,7 @@ impl PyJunctionTreeEngine {
 
         let mut var_names = Vec::new();
         for id in scope.variable_ids() {
-            if let Some(var) = engine.model.variables.get(id) {
+            if let Some(var) = engine.model().variables().get(id) {
                 var_names.push(var.name().to_string());
             } else {
                 var_names.push(format!("Unknown_{}", id));
@@ -77,6 +77,39 @@ impl PyJunctionTreeEngine {
         }
         result.insert("variables".to_string(), var_names.into_py(py));
         Ok(result)
+    }
+}
+
+impl PyVariableEliminationEngine {
+    fn parse_heuristic(py: Python<'_>, _model: &PyBayesianNetwork, heuristic: Option<PyObject>) -> PyResult<EliminationHeuristic> {
+        if let Some(h_obj) = heuristic {
+            let h_any = h_obj.bind(py);
+            if let Ok(s) = h_any.extract::<String>() {
+                return match s.as_str() {
+                    "min_degree" => Ok(EliminationHeuristic::MinDegree),
+                    "min_fill" => Ok(EliminationHeuristic::MinFill),
+                    other => Err(PyValueError::new_err(format!("Unknown heuristic: {}", other))),
+                };
+            }
+        }
+        Ok(EliminationHeuristic::MinFill)
+    }
+
+    fn pack_result(py: Python<'_>, model: &crate::core::models::bayesian_network::BayesianNetwork, factor: crate::core::factor::TabularFactor) -> HashMap<String, PyObject> {
+        let mut result = HashMap::new();
+        let scope = factor.scope();
+        let values: Vec<f64> = (0..scope.num_entries()).map(|i| factor.log_value_at(i).exp()).collect();
+        result.insert("values".to_string(), values.into_py(py));
+        let mut var_names = Vec::new();
+        for id in scope.variable_ids() {
+            if let Some(var) = model.variables().get(id) {
+                var_names.push(var.name().to_string());
+            } else {
+                var_names.push(format!("Unknown_{}", id));
+            }
+        }
+        result.insert("variables".to_string(), var_names.into_py(py));
+        result
     }
 }
 
@@ -118,10 +151,10 @@ impl PyVariableEliminationEngine {
         variables: Vec<String>,
         evidence: HashMap<String, String>,
         heuristic: Option<PyObject>,
-        mode: String,
+        mode: &str,
     ) -> PyResult<HashMap<String, PyObject>> {
         let h = Self::parse_heuristic(py, model, heuristic)?;
-        let m = match mode.as_str() {
+        let m = match mode {
             "map" => InferenceMode::Map,
             "mpe" => InferenceMode::Mpe,
             other => return Err(PyValueError::new_err(format!("Unknown mode: {}", other))),
@@ -138,45 +171,6 @@ impl PyVariableEliminationEngine {
         let result_factor = engine.query_map(&var_refs, &rust_evidence, h, m).map_err(|e| PyValueError::new_err(e.to_string()))?;
         
         Ok(Self::pack_result(py, &model.inner, result_factor))
-    }
-
-    fn parse_heuristic(py: Python<'_>, model: &PyBayesianNetwork, heuristic: Option<PyObject>) -> PyResult<EliminationHeuristic> {
-        if let Some(h_obj) = heuristic {
-            let h_any = h_obj.bind(py);
-            if let Ok(s) = h_any.extract::<String>() {
-                return match s.as_str() {
-                    "min_degree" => Ok(EliminationHeuristic::MinDegree),
-                    "min_fill" => Ok(EliminationHeuristic::MinFill),
-                    other => Err(PyValueError::new_err(format!("Unknown heuristic: {}", other))),
-                };
-            }
-            if let Ok(v) = h_any.extract::<Vec<String>>() {
-                let mut ids = Vec::new();
-                for name in v {
-                    let id = model.inner.id_of(&name).map_err(|e: crate::core::error::LutufiError| PyValueError::new_err(e.to_string()))?;
-                    ids.push(id);
-                }
-                return Ok(EliminationHeuristic::UserSpecified(ids));
-            }
-        }
-        Ok(EliminationHeuristic::MinFill)
-    }
-
-    fn pack_result(py: Python<'_>, model: &crate::core::models::bayesian_network::BayesianNetwork, factor: crate::core::factor::TabularFactor) -> HashMap<String, PyObject> {
-        let mut result = HashMap::new();
-        let scope = factor.scope();
-        let values: Vec<f64> = (0..scope.num_entries()).map(|i| factor.log_value_at(i).exp()).collect();
-        result.insert("values".to_string(), values.into_py(py));
-        let mut var_names = Vec::new();
-        for id in scope.variable_ids() {
-            if let Some(var) = model.variables.get(id) {
-                var_names.push(var.name().to_string());
-            } else {
-                var_names.push(format!("Unknown_{}", id));
-            }
-        }
-        result.insert("variables".to_string(), var_names.into_py(py));
-        result
     }
 }
 

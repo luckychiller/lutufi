@@ -44,6 +44,11 @@ impl DirectedVariableGraph {
         }
     }
 
+    /// Check if the graph contains any directed cycles.
+    pub fn is_cyclic(&self) -> bool {
+        is_cyclic_directed(&self.graph)
+    }
+
     /// Add a directed edge from `from` to `to`.
     /// 
     /// # Errors
@@ -88,6 +93,20 @@ impl DirectedVariableGraph {
         if let Some(&idx) = self.node_index.get(var_id) {
             self.graph.neighbors_directed(idx, petgraph::Direction::Outgoing).map(|i| self.id_at_index[&i]).collect()
         } else { Vec::new() }
+    }
+
+    /// Get all descendants of a node.
+    pub fn descendants(&self, var_id: &VariableId) -> Vec<VariableId> {
+        let mut descendants = std::collections::HashSet::new();
+        let mut stack = self.children(var_id);
+        while let Some(current) = stack.pop() {
+            if descendants.insert(current) {
+                for child in self.children(&current) {
+                    stack.push(child);
+                }
+            }
+        }
+        descendants.into_iter().collect()
     }
 
     /// Get the Markov blanket (parents, children, and parents of children).

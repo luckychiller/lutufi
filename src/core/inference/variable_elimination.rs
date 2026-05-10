@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use crate::core::{
     assignment::Assignment,
-    error::LutufiResult,
+    error::{LutufiError, LutufiResult},
     factor::TabularFactor,
     models::bayesian_network::BayesianNetwork,
     variable::VariableId,
@@ -37,6 +37,21 @@ impl<'a> VariableEliminationEngine<'a> {
     /// Create a new Variable Elimination engine for a model.
     pub fn new(model: &'a BayesianNetwork) -> Self {
         VariableEliminationEngine { model }
+    }
+
+    /// Query the joint probabilities for specific variables (unnormalized).
+    pub fn query_raw(
+        &self,
+        variables: &[&str],
+        evidence: &Assignment,
+        heuristic: EliminationHeuristic,
+    ) -> LutufiResult<TabularFactor> {
+        let query_ids = self.variable_ids(variables)?;
+        let mut factors = self.collect_reduced_factors(evidence)?;
+        let elimination_order = self.determine_elimination_order(&query_ids, &mut factors, heuristic)?;
+        let reduced_factors = self.eliminate_variables(factors, &elimination_order, false)?;
+        let final_factor = self.multiply_factors(reduced_factors)?;
+        Ok(final_factor)
     }
 
     /// Query the marginal probabilities for specific variables.
@@ -80,7 +95,7 @@ impl<'a> VariableEliminationEngine<'a> {
     pub fn estimate_treewidth(&self, heuristic: EliminationHeuristic) -> LutufiResult<usize> {
         let mut factors = self.collect_reduced_factors(&Assignment::new())?;
         let elimination_order = self.determine_elimination_order(&HashSet::new(), &mut factors, heuristic)?;
-        let mut max_clique = 0;
+        let mut max_clique: usize = 0;
 
         for &variable in &elimination_order {
             let (containing, not_containing): (Vec<_>, Vec<_>) = factors.into_iter()
@@ -91,7 +106,14 @@ impl<'a> VariableEliminationEngine<'a> {
                 continue;
             }
 
-            let product = containing.into_iter().reduce(|acc, factor| acc.multiply(&factor).unwrap()).unwrap();
+            let mut p_iter = containing.into_iter();
+            let first = p_iter.next().ok_or_else(|| LutufiError::InternalError {
+                message: "Empty containing factors in treewidth estimation".to_string(),
+            })?;
+            let mut product = first;
+            for factor in p_iter {
+                product = product.multiply(&factor)?;
+            }
             max_clique = max_clique.max(product.scope().len());
             let marginalized = product.marginalize(&[variable])?;
             factors = not_containing;
@@ -109,7 +131,7 @@ impl<'a> VariableEliminationEngine<'a> {
 
     fn variables_to_maximize(&self, evidence: &Assignment) -> LutufiResult<HashSet<VariableId>> {
         let mut vars = HashSet::new();
-        for &id in self.model.variables.keys() {
+        for &id in self.model.variables().keys() {
             if evidence.get_discrete(&id).is_err() {
                 vars.insert(id);
             }
@@ -145,8 +167,8 @@ impl<'a> VariableEliminationEngine<'a> {
         
         while !remaining_vars.is_empty() {
             let var = match heuristic {
-                EliminationHeuristic::MinDegree => self.choose_min_degree(&remaining_vars, factors),
-                EliminationHeuristic::MinFill => self.choose_min_fill(&remaining_vars, factors),
+                EliminationHeuristic::MinDegree => self.choose_min_degree(&remaining_vars, factors)?,
+                EliminationHeuristic::MinFill => self.choose_min_fill(&remaining_vars, factors)?,
             };
             order.push(var);
             remaining_vars.remove(&var);
@@ -170,7 +192,14 @@ impl<'a> VariableEliminationEngine<'a> {
                 continue;
             }
 
-            let product = containing.into_iter().reduce(|acc, factor| acc.multiply(&factor).unwrap()).unwrap();
+            let mut product_iter = containing.into_iter();
+            let first = product_iter.next().ok_or_else(|| LutufiError::InternalError {
+                message: "Empty containing factors in variable elimination".to_string(),
+            })?;
+            let mut product = first;
+            for factor in product_iter {
+                product = product.multiply(&factor)?;
+            }
             let marginalized = if max_product {
                 product.max_marginalize(&[variable])?
             } else {
@@ -190,12 +219,21 @@ impl<'a> VariableEliminationEngine<'a> {
             // Return identity factor if no factors left
             return TabularFactor::identity(crate::core::factor::Scope::from_ids_and_sizes(vec![], vec![]));
         }
-        let product = factors.into_iter().reduce(|acc, factor| acc.multiply(&factor).unwrap()).unwrap();
+        let mut p_iter = factors.into_iter();
+        let first = p_iter.next().ok_or_else(|| LutufiError::InternalError {
+            message: "multiply_factors called with empty factors".to_string(),
+        })?;
+        let mut product = first;
+        for factor in p_iter {
+            product = product.multiply(&factor)?;
+        }
         Ok(product)
     }
 
-    fn choose_min_degree(&self, vars: &HashSet<VariableId>, factors: &[TabularFactor]) -> VariableId {
-        let mut best_var = *vars.iter().next().unwrap();
+    fn choose_min_degree(&self, vars: &HashSet<VariableId>, factors: &[TabularFactor]) -> LutufiResult<VariableId> {
+        let mut best_var = *vars.iter().next().ok_or_else(|| LutufiError::InternalError {
+            message: "choose_min_degree called with empty vars".to_string(),
+        })?;
         let mut min_degree = usize::MAX;
 
         for &var in vars {
@@ -214,11 +252,13 @@ impl<'a> VariableEliminationEngine<'a> {
                 best_var = var;
             }
         }
-        best_var
+        Ok(best_var)
     }
 
-    fn choose_min_fill(&self, vars: &HashSet<VariableId>, factors: &[TabularFactor]) -> VariableId {
-        let mut best_var = *vars.iter().next().unwrap();
+    fn choose_min_fill(&self, vars: &HashSet<VariableId>, factors: &[TabularFactor]) -> LutufiResult<VariableId> {
+        let mut best_var = *vars.iter().next().ok_or_else(|| LutufiError::InternalError {
+            message: "choose_min_fill called with empty vars".to_string(),
+        })?;
         let mut best_fill = usize::MAX;
 
         for &var in vars {
@@ -250,6 +290,6 @@ impl<'a> VariableEliminationEngine<'a> {
                 best_var = var;
             }
         }
-        best_var
+        Ok(best_var)
     }
 }

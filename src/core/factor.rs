@@ -58,6 +58,20 @@ impl Scope {
     pub fn size_of(&self, var_id: &VariableId) -> Option<usize> {
         self.variables.binary_search(var_id).ok().map(|idx| self.sizes[idx])
     }
+
+    /// Create an Assignment from a flat index.
+    pub fn assignment_from_flat(&self, index: usize) -> LutufiResult<Assignment> {
+        if index >= self.num_entries() {
+            return Err(LutufiError::InternalError { message: "Index out of bounds for scope".to_string() });
+        }
+        
+        let mut assignment = Assignment::new();
+        let indices = multi_index_from_flat(index, &self.sizes);
+        for (i, &var_id) in self.variables.iter().enumerate() {
+            assignment.set_discrete(var_id, indices[i])?;
+        }
+        Ok(assignment)
+    }
 }
 
 /// A factor over a set of variables.
@@ -169,7 +183,7 @@ impl TabularFactor {
         let mut flat_idx = 0;
         let mut stride = 1;
 
-        for i in 0..scope.len() {
+        for i in (0..scope.len()).rev() {
             let var_id = scope.variable_ids()[i];
             let val_idx = assignment.get_discrete(&var_id)?;
             flat_idx += val_idx * stride;
@@ -561,6 +575,19 @@ impl ConditionalProbabilityTable {
         Ok(ConditionalProbabilityTable {
             child_id: child.id(),
             parent_ids: parents.iter().map(|v| v.id()).collect(),
+            factor,
+        })
+    }
+
+    /// Create a CPT from an existing TabularFactor.
+    pub fn from_factor(
+        child_id: VariableId,
+        parent_ids: Vec<VariableId>,
+        factor: TabularFactor,
+    ) -> LutufiResult<Self> {
+        Ok(ConditionalProbabilityTable {
+            child_id,
+            parent_ids,
             factor,
         })
     }

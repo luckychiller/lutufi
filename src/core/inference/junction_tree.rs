@@ -51,6 +51,11 @@ impl JunctionTreeEngine {
         self.treewidth
     }
 
+    /// The model this engine was compiled from.
+    pub fn model(&self) -> &BayesianNetwork {
+        &self.model
+    }
+
     /// Query the marginal probabilities for specific variables.
     pub fn query(
         &self,
@@ -103,11 +108,19 @@ impl JunctionTreeEngine {
 
     fn triangulate(model: &BayesianNetwork, moral: &UndirectedVariableGraph) -> LutufiResult<Vec<Scope>> {
         let mut graph = moral.clone();
-        let mut cliques: Vec<HashSet<VariableId>> = Vec::new();
-        let mut remaining: Vec<VariableId> = graph.node_ids();
 
-        while !remaining.is_empty() {
-            let eliminate = Self::choose_min_fill(&remaining, &graph);
+        // Use reverse topological order for elimination to guarantee family preservation.
+        // When a variable X is eliminated, all its parents Pa(X) are still in the graph
+        // (parents come after children in reverse topological order), so the elimination
+        // clique {X} ∪ Neighbors(X) contains the family {X} ∪ Pa(X).
+        let topo = model.topological_order()?;
+        let order: Vec<VariableId> = topo.iter()
+            .rev()
+            .filter_map(|&name| model.id_of(name).ok())
+            .collect();
+
+        let mut cliques: Vec<HashSet<VariableId>> = Vec::new();
+        for &eliminate in &order {
             let neighbors = graph.neighbors(&eliminate);
             let mut clique: HashSet<VariableId> = neighbors.iter().cloned().collect();
             clique.insert(eliminate);
@@ -119,48 +132,19 @@ impl JunctionTreeEngine {
                 }
             }
             graph.remove_node(&eliminate);
-            remaining.retain(|&id| id != eliminate);
         }
 
-        let all_cliques = cliques.clone();
-        let maximal: Vec<HashSet<VariableId>> = cliques.into_iter().filter(|cand| {
-            !all_cliques.iter().any(|other| other != cand && cand.is_subset(other))
-        }).collect();
-
         let mut scopes: Vec<Scope> = Vec::new();
-        for clique in maximal {
+        for clique in cliques {
             let mut ids: Vec<VariableId> = clique.into_iter().collect();
             ids.sort_by_key(|id| id.to_string());
             let sizes = ids.iter().map(|id| {
-                model.variables.get(id).map(|v| v.domain().size().unwrap_or(0)).unwrap_or(0)
+                model.variables().get(id).map(|v| v.domain().size().unwrap_or(0)).unwrap_or(0)
             }).collect();
             scopes.push(Scope::from_ids_and_sizes(ids, sizes));
         }
 
         Ok(scopes)
-    }
-
-    fn choose_min_fill(variables: &[VariableId], graph: &UndirectedVariableGraph) -> VariableId {
-        let mut best = variables[0];
-        let mut best_fill = usize::MAX;
-        for &var in variables {
-            let neighbors = graph.neighbors(&var);
-            let mut fill = 0;
-            for i in 0..neighbors.len() {
-                for j in i + 1..neighbors.len() {
-                    let v1 = neighbors[i];
-                    let v2 = neighbors[j];
-                    if !graph.neighbors(&v1).contains(&v2) {
-                        fill += 1;
-                    }
-                }
-            }
-            if fill < best_fill || (fill == best_fill && neighbors.len() < graph.neighbors(&best).len()) {
-                best_fill = fill;
-                best = var;
-            }
-        }
-        best
     }
 
     fn build_junction_tree(cliques: &[Scope]) -> LutufiResult<Vec<Vec<usize>>> {
@@ -295,7 +279,9 @@ impl JunctionTreeEngine {
                 continue;
             }
             self.collect_messages(child, Some(node), original, messages)?;
-            let separator = self.separator_scopes.get(&(child, node)).unwrap();
+            let separator = self.separator_scopes.get(&(child, node)).ok_or_else(|| LutufiError::InternalError {
+                message: format!("Missing separator scope for child={} node={}", child, node),
+            })?;
             let message = self.compute_message(child, node, original, messages, separator)?;
             messages.insert((child, node), message);
         }
@@ -313,7 +299,9 @@ impl JunctionTreeEngine {
             if Some(child) == parent {
                 continue;
             }
-            let separator = self.separator_scopes.get(&(node, child)).unwrap();
+            let separator = self.separator_scopes.get(&(node, child)).ok_or_else(|| LutufiError::InternalError {
+                message: format!("Missing separator scope for node={} child={}", node, child),
+            })?;
             let message = self.compute_message(node, child, original, messages, separator)?;
             messages.insert((node, child), message);
             self.distribute_messages(child, Some(node), original, messages)?;
@@ -354,7 +342,7 @@ impl JunctionTreeEngine {
         let reduced_factors: Vec<TabularFactor> = beliefs.into_iter().filter(|belief| {
             !belief.scope().variable_ids().is_empty()
         }).collect();
-        let order = Self::determine_elimination_order_from_factors(&reduced_factors, query_ids);
+        let order = Self::determine_elimination_order_from_factors(&reduced_factors, query_ids)?;
         let factors = Self::eliminate_variables(reduced_factors, &order, false)?;
         let product = Self::multiply_factors(factors)?;
         let mut final_factor = product;
@@ -365,7 +353,7 @@ impl JunctionTreeEngine {
     fn determine_elimination_order_from_factors(
         factors: &[TabularFactor],
         query_ids: &HashSet<VariableId>,
-    ) -> Vec<VariableId> {
+    ) -> LutufiResult<Vec<VariableId>> {
         let mut all_vars = HashSet::new();
         for factor in factors {
             for &id in factor.scope().variable_ids() {
@@ -378,7 +366,9 @@ impl JunctionTreeEngine {
         let mut remaining_vars = all_vars;
         let mut order = Vec::new();
         while !remaining_vars.is_empty() {
-            let mut best = *remaining_vars.iter().next().unwrap();
+            let mut best = *remaining_vars.iter().next().ok_or_else(|| LutufiError::InternalError {
+                message: "Empty remaining variables set in elimination order".to_string(),
+            })?;
             let mut best_fill = usize::MAX;
             for &var in &remaining_vars {
                 let mut neighbors = HashSet::new();
@@ -410,7 +400,7 @@ impl JunctionTreeEngine {
             order.push(best);
             remaining_vars.remove(&best);
         }
-        order
+        Ok(order)
     }
 
     fn eliminate_variables(
@@ -425,7 +415,14 @@ impl JunctionTreeEngine {
                 factors = not_containing;
                 continue;
             }
-            let product = containing.into_iter().reduce(|acc, factor| acc.multiply(&factor).unwrap()).unwrap();
+            let mut p_iter = containing.into_iter();
+            let first = p_iter.next().ok_or_else(|| LutufiError::InternalError {
+                message: "Empty containing factors in elimination".to_string(),
+            })?;
+            let mut product = first;
+            for factor in p_iter {
+                product = product.multiply(&factor)?;
+            }
             let marginalized = if max_product {
                 product.max_marginalize(&[variable])?
             } else {
@@ -443,7 +440,14 @@ impl JunctionTreeEngine {
         if factors.is_empty() {
             return TabularFactor::identity(Scope::from_ids_and_sizes(vec![], vec![]));
         }
-        let product = factors.into_iter().reduce(|acc, factor| acc.multiply(&factor).unwrap()).unwrap();
+        let mut p_iter = factors.into_iter();
+        let first = p_iter.next().ok_or_else(|| LutufiError::InternalError {
+            message: "Empty factors in multiply_factors".to_string(),
+        })?;
+        let mut product = first;
+        for factor in p_iter {
+            product = product.multiply(&factor)?;
+        }
         Ok(product)
     }
 }

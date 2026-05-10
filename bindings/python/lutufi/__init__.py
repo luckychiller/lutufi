@@ -32,10 +32,25 @@ except ImportError:
     Variable = None
     Domain = None
 
-from lutufi.inference import InferenceEngine, QueryResult, JunctionTreeEngine, LutufiHighTreewidthWarning
-from lutufi.learning import LearningEngine
+from lutufi.inference import (
+    InferenceEngine, 
+    QueryResult, 
+    JunctionTreeEngine, 
+    LutufiHighTreewidthWarning,
+    BeliefPropagation,
+    LoopyBeliefPropagation,
+    GibbsSampler,
+)
+from lutufi.learning import ParameterEstimator, StructureLearner, fit, learn_structure
 from lutufi.io import read_graph, write_graph
-from lutufi.models import BayesianNetwork, LutufiError, LutufiValidationError, LutufiNonCausalError
+from lutufi.models import (
+    BayesianNetwork, 
+    MarkovRandomField, 
+    DynamicBayesianNetwork,
+    LutufiError, 
+    LutufiValidationError, 
+    LutufiNonCausalError,
+)
 
 __all__ = [
     "__version__",
@@ -46,14 +61,22 @@ __all__ = [
     "Variable",
     "Domain",
     "BayesianNetwork",
+    "MarkovRandomField",
+    "DynamicBayesianNetwork",
     "LutufiError",
     "LutufiValidationError",
     "LutufiNonCausalError",
     "InferenceEngine",
-    "LearningEngine",
+    "BeliefPropagation",
+    "LoopyBeliefPropagation",
+    "GibbsSampler",
     "QueryResult",
     "JunctionTreeEngine",
     "LutufiHighTreewidthWarning",
+    "ParameterEstimator",
+    "StructureLearner",
+    "fit",
+    "learn_structure",
     "read_graph",
     "write_graph",
 ]

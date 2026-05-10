@@ -48,7 +48,9 @@ impl MarkovRandomField {
         self.graph.add_node(id);
         self.name_to_id.insert(name.to_string(), id);
         self.variables.insert(id, var);
-        Ok(self.variables.get(&id).unwrap())
+        Ok(self.variables.get(&id).ok_or_else(|| LutufiError::InternalError {
+            message: format!("MRF inconsistency: variable {:?} just inserted but not found", id),
+        })?)
     }
 
     /// Add an undirected edge between two variables.

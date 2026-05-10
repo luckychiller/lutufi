@@ -17,10 +17,20 @@ pub mod lbp;
 pub mod mcmc;
 /// Approximate inference using Variational Inference.
 pub mod variational;
+/// Strategy pattern for inference algorithms
+pub mod strategy;
+/// Concrete inference strategy implementations
+pub mod strategies;
+/// Factory for managing inference strategies
+pub mod strategy_factory;
 /// Unified inference engine.
 pub mod engine;
+/// Configuration for inference algorithm selection.
+pub mod config;
 
-pub use engine::{Algorithm, InferenceResult, InferenceEngine, Diagnostics};
+pub use config::InferenceConfig;
+pub use engine::{InferenceResult, InferenceEngine};
+pub use strategy::{Algorithm, Diagnostics, InferenceStrategy};
 
 /// Inference result (Legacy, for backward compatibility during Phase 3)
 #[derive(Debug, Clone)]

@@ -96,7 +96,7 @@ impl PyBayesianNetwork {
     }
     pub fn get_states(&self, variable_name: &str) -> PyResult<Vec<String>> {
         let id = self.inner.id_of(variable_name).map_err(|e: crate::core::error::LutufiError| PyValueError::new_err(e.to_string()))?;
-        let var = self.inner.variables.get(&id).ok_or_else(|| PyValueError::new_err("Var not found"))?;
+        let var = self.inner.variables().get(&id).ok_or_else(|| PyValueError::new_err("Var not found"))?;
         match var.domain() {
             Domain::Discrete { states } => Ok(states.clone()),
             Domain::Binary => Ok(vec!["false".to_string(), "true".to_string()]),
@@ -118,8 +118,8 @@ impl PyBayesianNetwork {
         let parent_ids = self.inner.graph.parents(&child_id);
         let mut parents = Vec::new();
         for id in parent_ids {
-            let var = self.inner.variables.get(&id).ok_or_else(|| PyValueError::new_err("Parent mismatch"))?.clone();
-            parents.push(var);
+            let var: &Variable = self.inner.variables().get(&id).ok_or_else(|| PyValueError::new_err("Parent mismatch"))?;
+            parents.push(var.clone());
         }
         Ok(parents)
     }

@@ -120,6 +120,17 @@ pub enum LutufiError {
         value: String 
     },
 
+    /// Raised when a causal effect is not identifiable from the graph and data.
+    #[error("Causal effect P({target} | do({intervention})) is not identifiable from observational data. Evidence: {hedge}")]
+    NotIdentifiable {
+        /// The query target variable.
+        target: String,
+        /// The intervention variable.
+        intervention: String,
+        /// Explanation of why the effect is not identifiable.
+        hedge: String,
+    },
+
     // Validation Errors
 
     /// Raised when the model is in an inconsistent state.

@@ -1,197 +1,140 @@
-use std::collections::HashMap;
-use std::time::Duration;
+//! Unified Inference Engine
+//!
+//! The InferenceEngine serves as a facade that delegates to specific
+//! inference strategies. This design separates algorithm selection logic
+//! from algorithm implementation, following the Strategy Pattern and
+//! adhering to the Single Responsibility Principle.
+
 use crate::core::{
     assignment::Assignment,
-    error::{LutufiError, LutufiResult},
-    factor::TabularFactor,
+    error::LutufiResult,
     models::bayesian_network::BayesianNetwork,
-    models::factor_graph::FactorGraph,
 };
-use super::{lbp, mcmc, variational, junction_tree};
 
-/// Choice of inference algorithm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Algorithm {
-    /// Automatically select the best algorithm.
-    Auto,
-    /// Exact inference using Junction Tree.
-    Exact,
-    /// Loopy Belief Propagation.
-    LBP,
-    /// Markov Chain Monte Carlo (Gibbs sampling).
-    MCMC,
-    /// Mean Field Variational Inference.
-    Variational,
-}
+pub use super::strategy::{Algorithm, Diagnostics, InferenceResult, InferenceStrategy};
+use super::{config::InferenceConfig, strategy_factory::InferenceStrategyFactory};
+use std::sync::OnceLock;
 
-/// Unified result structure for all inference algorithms.
-#[derive(Debug, Clone)]
-pub struct InferenceResult {
-    /// The variables queried.
-    pub variables: Vec<String>,
-    /// Estimated marginal distributions for each variable.
-    pub distributions: HashMap<String, TabularFactor>,
-    /// Which algorithm was actually used.
-    pub algorithm_used: Algorithm,
-    /// How long the computation took.
-    pub computation_time: Duration,
-    /// Algorithm-specific diagnostics.
-    pub diagnostics: Diagnostics,
-}
+/// Global strategy factory (lazy-initialized singleton for efficiency).
+static STRATEGY_FACTORY: OnceLock<InferenceStrategyFactory> = OnceLock::new();
 
-/// Algorithm-specific diagnostic information.
-#[derive(Debug, Clone)]
-pub enum Diagnostics {
-    /// Exact inference diagnostic (treewidth).
-    JunctionTree { 
-        /// Estimated treewidth of the model.
-        treewidth: usize 
-    },
-    /// LBP diagnostics (convergence status, iterations).
-    LBP { 
-        /// Whether the algorithm converged within tolerance.
-        converged: bool, 
-        /// Number of iterations performed.
-        iterations: usize, 
-        /// Final maximum message change.
-        residual: f64 
-    },
-    /// MCMC diagnostics (sample count).
-    MCMC { 
-        /// Number of samples collected per chain.
-        n_samples: usize 
-    },
-    /// Variational diagnostics (ELBO, convergence).
-    Variational { 
-        /// Final Evidence Lower Bound (higher is better).
-        elbo: f64, 
-        /// Whether CAVI converged.
-        converged: bool, 
-        /// Total iterations performed.
-        iterations: usize 
-    },
-    /// No diagnostics available.
-    None,
-}
-
-/// Factory for creating and running inference engines.
+/// Facade for running probabilistic inference.
+///
+/// The InferenceEngine abstracts away algorithm selection and delegates
+/// to specific strategy implementations. This maintains a clean separation
+/// of concerns and makes it easy to add new algorithms without modifying
+/// the engine.
+///
+/// Configuration thresholds (like `exact_max_nodes`, `ve_max_nodes`) are
+/// user-configurable via [`InferenceConfig`] rather than hardcoded,
+/// following the Open/Closed Principle.
 pub struct InferenceEngine;
 
 impl InferenceEngine {
+    /// Get or initialize the global strategy factory.
+    fn factory() -> &'static InferenceStrategyFactory {
+        STRATEGY_FACTORY.get_or_init(InferenceStrategyFactory::new)
+    }
+
     /// Run a query using the specified algorithm.
+    ///
+    /// # Arguments
+    /// * `model` - The Bayesian Network to query
+    /// * `variables` - Variables to compute marginals for
+    /// * `evidence` - Observed variable assignments
+    /// * `algorithm` - Algorithm to use (Auto selects automatically)
+    ///
+    /// # Returns
+    /// An InferenceResult with marginals and diagnostics
+    ///
+    /// # Example
+    /// ```
+    /// # use lutufi_core::core::{models::bayesian_network::BayesianNetwork, assignment::Assignment, domain::Domain, inference::{Algorithm, InferenceEngine}};
+    /// # let mut model = BayesianNetwork::new();
+    /// # model.add_variable("Disease", Domain::binary()).unwrap();
+    /// # let evidence = Assignment::new();
+    /// let result = InferenceEngine::query(
+    ///     &model,
+    ///     &["Disease"],
+    ///     &evidence,
+    ///     Algorithm::Auto
+    /// ).unwrap();
+    /// ```
     pub fn query(
         model: &BayesianNetwork,
         variables: &[&str],
         evidence: &Assignment,
         algorithm: Algorithm,
     ) -> LutufiResult<InferenceResult> {
-        let start_time = std::time::Instant::now();
-        
-        let actual_algorithm = if algorithm == Algorithm::Auto {
-            Self::select_algorithm(model)
-        } else {
-            algorithm
-        };
-
-        match actual_algorithm {
-            Algorithm::Exact => {
-                let jt = junction_tree::JunctionTreeEngine::new(model)?;
-                let mut distributions = HashMap::new();
-                for &var in variables {
-                    distributions.insert(var.to_string(), jt.query(&[var], evidence)?);
-                }
-                Ok(InferenceResult {
-                    variables: variables.iter().map(|&s| s.to_string()).collect(),
-                    distributions,
-                    algorithm_used: Algorithm::Exact,
-                    computation_time: start_time.elapsed(),
-                    diagnostics: Diagnostics::JunctionTree { treewidth: jt.treewidth() },
-                })
-            }
-            Algorithm::LBP => {
-                let fg = FactorGraph::from_bayesian_network(model)?;
-                let mut engine = lbp::LBPEngine::new(fg, lbp::LBPOptions::default());
-                let res = engine.run(evidence)?;
-                
-                let mut distributions = HashMap::new();
-                for &var_name in variables {
-                    let var_id = model.id_of(var_name)?;
-                    let belief = res.beliefs.get(&var_id).ok_or_else(|| LutufiError::VariableNotFound { 
-                        name: var_name.to_string(), 
-                        available: "".to_string() 
-                    })?.clone();
-                    distributions.insert(var_name.to_string(), belief);
-                }
-
-                Ok(InferenceResult {
-                    variables: variables.iter().map(|&s| s.to_string()).collect(),
-                    distributions,
-                    algorithm_used: Algorithm::LBP,
-                    computation_time: start_time.elapsed(),
-                    diagnostics: Diagnostics::LBP {
-                        converged: res.converged,
-                        iterations: res.iterations,
-                        residual: res.residual,
-                    },
-                })
-            }
-            Algorithm::MCMC => {
-                let fg = FactorGraph::from_bayesian_network(model)?;
-                let engine = mcmc::MCMCEngine::new(fg, mcmc::MCMCOptions::default());
-                let res = engine.run(evidence)?;
-                
-                let mut distributions = HashMap::new();
-                for &var_name in variables {
-                    let var_id = model.id_of(var_name)?;
-                    let marginal = res.marginals.get(&var_id).ok_or_else(|| LutufiError::InternalError { 
-                        message: format!("MCMC failed to produce marginal for {}", var_name) 
-                    })?;
-                    distributions.insert(var_name.to_string(), marginal.clone());
-                }
-
-                Ok(InferenceResult {
-                    variables: variables.iter().map(|&s| s.to_string()).collect(),
-                    distributions,
-                    algorithm_used: Algorithm::MCMC,
-                    computation_time: start_time.elapsed(),
-                    diagnostics: Diagnostics::MCMC { n_samples: res.n_samples },
-                })
-            }
-            Algorithm::Variational => {
-                let fg = FactorGraph::from_bayesian_network(model)?;
-                let engine = variational::VariationalEngine::new(fg, variational::VariationalOptions::default());
-                let res = engine.run_with_evidence(evidence)?;
-                
-                let mut distributions = HashMap::new();
-                for &var_name in variables {
-                    let var_id = model.id_of(var_name)?;
-                    let marginal = res.marginals.get(&var_id).ok_or_else(|| LutufiError::InternalError { 
-                        message: format!("Variational inference failed to produce marginal for {}", var_name) 
-                    })?;
-                    distributions.insert(var_name.to_string(), marginal.clone());
-                }
-
-                Ok(InferenceResult {
-                    variables: variables.iter().map(|&s| s.to_string()).collect(),
-                    distributions,
-                    algorithm_used: Algorithm::Variational,
-                    computation_time: start_time.elapsed(),
-                    diagnostics: Diagnostics::Variational {
-                        elbo: res.elbo,
-                        converged: res.converged,
-                        iterations: res.elbo_history.len(),
-                    },
-                })
-            }
-            Algorithm::Auto => unreachable!(),
-        }
+        let config = InferenceConfig::default();
+        Self::query_with_config(model, variables, evidence, algorithm, &config)
     }
 
-    fn select_algorithm(model: &BayesianNetwork) -> Algorithm {
-        if model.variables.len() <= 20 {
-            Algorithm::Exact
+    /// Run a query with a custom configuration for algorithm selection.
+    ///
+    /// This allows fine-grained control over when exact vs approximate
+    /// inference is preferred, which thresholds trigger warnings, etc.
+    ///
+    /// # Example
+    /// ```
+    /// # use lutufi_core::core::{models::bayesian_network::BayesianNetwork, assignment::Assignment, domain::Domain, inference::{Algorithm, InferenceEngine, InferenceConfig}};
+    /// # let mut model = BayesianNetwork::new();
+    /// # model.add_variable("Disease", Domain::binary()).unwrap();
+    /// # let evidence = Assignment::new();
+    /// let config = InferenceConfig::new()
+    ///     .with_exact_max_nodes(25);
+    /// let result = InferenceEngine::query_with_config(
+    ///     &model, &["Disease"], &evidence,
+    ///     Algorithm::Auto, &config
+    /// ).unwrap();
+    /// ```
+    pub fn query_with_config(
+        model: &BayesianNetwork,
+        variables: &[&str],
+        evidence: &Assignment,
+        algorithm: Algorithm,
+        config: &InferenceConfig,
+    ) -> LutufiResult<InferenceResult> {
+        let factory = Self::factory();
+
+        // Select strategy based on algorithm choice and config
+        let strategy = if algorithm == Algorithm::Auto {
+            factory.select_best_strategy(model, config)?
         } else {
-            Algorithm::LBP
-        }
+            factory.get_strategy(algorithm)?
+        };
+
+        // Delegate to the strategy
+        strategy.infer(model, variables, evidence)
+    }
+
+    /// Run a query with automatic algorithm selection.
+    ///
+    /// This is a convenience method that automatically selects the best
+    /// algorithm for your model based on size and structure.
+    pub fn query_auto(
+        model: &BayesianNetwork,
+        variables: &[&str],
+        evidence: &Assignment,
+    ) -> LutufiResult<InferenceResult> {
+        Self::query(model, variables, evidence, Algorithm::Auto)
+    }
+
+    /// List all available inference algorithms.
+    pub fn available_algorithms() -> Vec<Algorithm> {
+        Self::factory().list_strategies()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_available_algorithms() {
+        let algorithms = InferenceEngine::available_algorithms();
+        assert!(!algorithms.is_empty());
+        assert!(algorithms.contains(&Algorithm::VariableElimination));
+        assert!(algorithms.contains(&Algorithm::LBP));
     }
 }

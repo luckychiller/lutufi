@@ -1,12 +1,33 @@
 //! Learning module
 //!
 //! Provides learning algorithms:
-//! - Parameter learning (MLE, Bayesian)
+//! - Parameter learning (MLE, Bayesian, EM)
 //! - Structure learning (constraint-based, score-based)
 //! - Expectation-Maximization for incomplete data
-//! - Online learning algorithms
 
-/// Trait for learning algorithms
+/// Parameter learning implementation.
+pub mod parameter;
+/// Structure learning implementation.
+pub mod structure;
+/// Common data processing utilities.
+pub mod data_processor;
+
+pub use parameter::{
+    ParameterEstimator, ParameterLearner, ParameterLearningMethod, 
+    ParameterLearningOptions, LegacyParameterLearningOptions, SmoothingMethod
+};
+pub use data_processor::DataProcessor;
+pub use structure::{
+    score_based::{ScoreBasedLearner, ScoreType, ScoreBasedOptions},
+    constraint_based::{
+        ConstraintBasedLearner, IndependenceTestType, ConstraintBasedOptions,
+        SkeletonDiscovery, VStructureOrientator, MeeksRuleApplier, ConstrainedNetworkBuilder,
+        EdgeOrientation, SkeletonResult, VStructureResult,
+        FciResult, PagGraph, PagEdgeMark,
+    },
+};
+
+/// Trait for learning algorithms (Base trait)
 pub trait LearningAlgorithm {
     /// Type for learned model
     type Model;
@@ -14,58 +35,37 @@ pub trait LearningAlgorithm {
     type Data;
     
     /// Fit the model to data
-    fn fit(&mut self, data: &Self::Data) -> crate::Result<Self::Model>;
-    
-    /// Perform one iteration of online learning
-    fn update(&mut self, sample: &Self::Data) -> crate::Result<()>;
+    fn fit(&mut self, data: &Self::Data) -> crate::core::error::LutufiResult<Self::Model>;
 }
 
-/// Learning options
+/// Generic learning options (for shared configurations)
 #[derive(Debug, Clone, Copy)]
 pub struct LearningOptions {
     /// Maximum number of iterations
     pub max_iterations: usize,
-    /// Learning rate
-    pub learning_rate: f64,
-    /// Regularization parameter
-    pub regularization: f64,
     /// Convergence threshold
     pub tolerance: f64,
+    /// Random seed
+    pub seed: Option<u64>,
 }
 
 impl Default for LearningOptions {
     fn default() -> Self {
         Self {
             max_iterations: 100,
-            learning_rate: 0.01,
-            regularization: 0.001,
             tolerance: 1e-6,
+            seed: None,
         }
     }
 }
 
-/// Learning result
+/// Learning result (Diagnostic summary)
 #[derive(Debug, Clone)]
 pub struct LearningResult {
     /// Number of iterations performed
     pub iterations: usize,
-    /// Final log-likelihood
-    pub log_likelihood: f64,
+    /// Final log-likelihood (or score)
+    pub score: f64,
     /// Whether the algorithm converged
     pub converged: bool,
-    /// Training time in seconds
-    pub training_time_secs: f64,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_learning_options_default() {
-        let opts = LearningOptions::default();
-        assert_eq!(opts.max_iterations, 100);
-        assert_eq!(opts.learning_rate, 0.01);
-        assert_eq!(opts.regularization, 0.001);
-    }
 }

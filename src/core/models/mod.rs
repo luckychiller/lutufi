@@ -16,12 +16,30 @@
 
 /// Bayesian Network implementation.
 pub mod bayesian_network;
+/// Causal Model implementation.
+pub mod causal_model;
 /// Markov Random Field implementation.
 pub mod markov_random_field;
 /// Dynamic Bayesian Network implementation.
 pub mod dynamic_bayesian_network;
 /// Factor Graph implementation.
 pub mod factor_graph;
+/// Network registry implementation.
+pub mod registry;
+/// Sampling engine for Bayesian Networks.
+pub mod sampler;
+/// Builder pattern for Bayesian Networks.
+pub mod bayesian_network_builder;
+/// Factor store for CPT management.
+pub mod factor_store;
+
+pub use bayesian_network::{BayesianNetwork, StructureLearningMethod};
+pub use bayesian_network_builder::BayesianNetworkBuilder;
+pub use causal_model::CausalModel;
+pub use markov_random_field::MarkovRandomField;
+pub use dynamic_bayesian_network::DynamicBayesianNetwork;
+pub use factor_graph::FactorGraph;
+pub use factor_store::{FactorStore, InMemoryFactorStore};
 
 use serde::{Deserialize, Serialize};
 

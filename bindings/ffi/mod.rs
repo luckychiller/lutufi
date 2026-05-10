@@ -8,6 +8,7 @@ pub mod variable;
 pub mod domain;
 pub mod models;
 pub mod inference;
+pub mod learning;
 
 /// Register all Python-exposed types and functions.
 /// Called once when the Python extension module is loaded.
@@ -24,5 +25,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<inference::PyLBPEngine>()?;
     m.add_class::<inference::PyMCMCEngine>()?;
     m.add_class::<inference::PyVariationalEngine>()?;
+    m.add_class::<learning::PyParameterEstimator>()?;
+    m.add_class::<learning::PyStructureLearner>()?;
     Ok(())
 }

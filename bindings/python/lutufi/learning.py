@@ -1,234 +1,87 @@
-"""Learning module.
+"""
+Learning module for Lutufi.
 
-This module provides learning algorithms for network models including:
-- Parameter learning (Maximum Likelihood, Bayesian)
-- Structure learning (constraint-based, score-based)
-- Expectation-Maximization for incomplete data
-- Online learning algorithms
+Provides high-level Python API for parameter and structure learning
+from observational data.
 """
 
-from typing import Optional, Dict, Any, Union
-import numpy as np
+from typing import List, Dict, Any, Optional, Union
 import pandas as pd
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
+import numpy as np
+from ._lutufi import _RustParameterEstimator, _RustStructureLearner
+from .models import BayesianNetwork
 
+class ParameterEstimator:
+    """Estimator for learning parameters (CPTs) from data."""
 
-@dataclass
-class LearningOptions:
-    """Options for learning algorithms.
-    
-    Attributes:
-        max_iterations: Maximum number of iterations
-        learning_rate: Learning rate for gradient-based methods
-        regularization: Regularization parameter
-        tolerance: Convergence threshold
-    """
-    max_iterations: int = 100
-    learning_rate: float = 0.01
-    regularization: float = 0.001
-    tolerance: float = 1e-6
-
-
-@dataclass
-class LearningResult:
-    """Result of a learning operation.
-    
-    Attributes:
-        model: Learned model
-        iterations: Number of iterations performed
-        log_likelihood: Final log-likelihood
-        converged: Whether the algorithm converged
-        training_time_secs: Training time in seconds
-    """
-    model: Any
-    iterations: int
-    log_likelihood: float
-    converged: bool
-    training_time_secs: float
-
-
-class LearningEngine(ABC):
-    """Abstract base class for learning engines.
-    
-    This class provides a common interface for various learning algorithms.
-    """
-    
-    def __init__(self, options: Optional[LearningOptions] = None):
-        """Initialize the learning engine.
-        
-        Args:
-            options: Learning options
+    def __init__(self, method: str = "mle", alpha: float = 0.5):
         """
-        self._options = options or LearningOptions()
-    
-    @property
-    def options(self) -> LearningOptions:
-        """Get learning options."""
-        return self._options
-    
-    @options.setter
-    def options(self, value: LearningOptions) -> None:
-        """Set learning options."""
-        self._options = value
-    
-    @abstractmethod
-    def fit(self, data: pd.DataFrame) -> LearningResult:
-        """Fit the model to data.
-        
-        Args:
-            data: Training data
-            
-        Returns:
-            Learning result
-        """
-        pass
-    
-    @abstractmethod
-    def update(self, sample: pd.Series) -> None:
-        """Perform one iteration of online learning.
-        
-        Args:
-            sample: Single data sample
-        """
-        pass
+        Initialize the parameter estimator.
 
+        Args:
+            method: 'mle' for Maximum Likelihood or 'bayesian' for Bayesian estimation.
+            alpha: Pseudocount for Laplace smoothing (MLE) or ESS (Bayesian).
+        """
+        self._inner = _RustParameterEstimator(method, alpha, 100)
 
-class ParameterLearningEngine(LearningEngine):
-    """Engine for parameter learning.
-    
-    Learns the parameters (conditional probability tables) of a network
-    given its structure.
-    """
-    
-    def __init__(
+    def fit(self, model: BayesianNetwork, data: pd.DataFrame) -> None:
+        """
+        Fit the model parameters to the provided data.
+
+        Args:
+            model: The Bayesian Network to fit.
+            data: A pandas DataFrame where columns match variable names.
+        """
+        # Convert DataFrame to a list of dicts for Rust FFI
+        # In a real implementation, we should use a more efficient zero-copy method
+        data_dicts = data.to_dict('records')
+        # Ensure all values are strings for the current FFI bridge
+        processed_data = []
+        for record in data_dicts:
+            processed_data.append({str(k): str(v) for k, v in record.items() if pd.notnull(v)})
+        
+        self._inner.fit(model._model, processed_data)
+
+class StructureLearner:
+    """Learner for discovering network structure from data."""
+
+    def __init__(self):
+        """Initialize the structure learner."""
+        self._inner = _RustStructureLearner()
+
+    def learn(
         self,
-        model: Any,
-        method: str = "mle",
-        options: Optional[LearningOptions] = None,
-    ):
-        """Initialize parameter learning engine.
-        
-        Args:
-            model: Network model with known structure
-            method: Learning method ('mle' or 'bayesian')
-            options: Learning options
+        data: pd.DataFrame,
+        method: str = "hc",
+        score: str = "bic",
+        **kwargs
+    ) -> BayesianNetwork:
         """
-        super().__init__(options)
-        self._model = model
-        self._method = method
-    
-    def fit(self, data: pd.DataFrame) -> LearningResult:
-        """Learn parameters from data.
-        
+        Learn the DAG structure from data.
+
         Args:
-            data: Training data
-            
+            data: Observations.
+            method: 'hc' (Hill Climbing), 'ges', 'pc', or 'fci'.
+            score: 'bic' or 'bdeu'.
+            **kwargs: Algorithm-specific options.
+
         Returns:
-            Learning result
+            A new BayesianNetwork with the learned structure.
         """
-        # Placeholder implementation
-        return LearningResult(
-            model=self._model,
-            iterations=0,
-            log_likelihood=0.0,
-            converged=True,
-            training_time_secs=0.0,
-        )
-    
-    def update(self, sample: pd.Series) -> None:
-        """Update parameters with a single sample (online learning).
-        
-        Args:
-            sample: Single data sample
-        """
-        pass
+        data_dicts = data.to_dict('records')
+        processed_data = []
+        for record in data_dicts:
+            processed_data.append({str(k): str(v) for k, v in record.items() if pd.notnull(v)})
 
+        rust_bn = self._inner.learn_structure(processed_data, method, score, kwargs)
+        return BayesianNetwork(_model=rust_bn)
 
-class StructureLearningEngine(LearningEngine):
-    """Engine for structure learning.
-    
-    Learns the structure (graph topology) of a network from data.
-    """
-    
-    def __init__(
-        self,
-        method: str = "hill_climbing",
-        options: Optional[LearningOptions] = None,
-    ):
-        """Initialize structure learning engine.
-        
-        Args:
-            method: Learning method ('hill_climbing', 'constraint_based', etc.)
-            options: Learning options
-        """
-        super().__init__(options)
-        self._method = method
-    
-    def fit(self, data: pd.DataFrame) -> LearningResult:
-        """Learn structure from data.
-        
-        Args:
-            data: Training data
-            
-        Returns:
-            Learning result with learned model
-        """
-        # Placeholder implementation
-        from lutufi.models import BayesianNetwork
-        
-        model = BayesianNetwork(name="learned_model")
-        return LearningResult(
-            model=model,
-            iterations=0,
-            log_likelihood=0.0,
-            converged=True,
-            training_time_secs=0.0,
-        )
-    
-    def update(self, sample: pd.Series) -> None:
-        """Not typically used for structure learning."""
-        raise NotImplementedError("Online structure learning not supported")
+def fit(model: BayesianNetwork, data: pd.DataFrame, method: str = "mle", **kwargs) -> None:
+    """Convenience function to fit a model to data."""
+    estimator = ParameterEstimator(method=method, **kwargs)
+    estimator.fit(model, data)
 
-
-class ExpectationMaximization(LearningEngine):
-    """Expectation-Maximization algorithm for incomplete data.
-    
-    Learns parameters when some data values are missing.
-    """
-    
-    def __init__(
-        self,
-        model: Any,
-        options: Optional[LearningOptions] = None,
-    ):
-        """Initialize EM algorithm.
-        
-        Args:
-            model: Initial model structure
-            options: Learning options
-        """
-        super().__init__(options)
-        self._model = model
-    
-    def fit(self, data: pd.DataFrame) -> LearningResult:
-        """Run EM algorithm on incomplete data.
-        
-        Args:
-            data: Training data (may contain missing values)
-            
-        Returns:
-            Learning result
-        """
-        # Placeholder implementation
-        return LearningResult(
-            model=self._model,
-            iterations=0,
-            log_likelihood=0.0,
-            converged=True,
-            training_time_secs=0.0,
-        )
-    
-    def update(self, sample: pd.Series) -> None:
-        """Online EM update."""
-        pass
+def learn_structure(data: pd.DataFrame, method: str = "hc", **kwargs) -> BayesianNetwork:
+    """Convenience function to learn network structure from data."""
+    learner = StructureLearner()
+    return learner.learn(data, method=method, **kwargs)

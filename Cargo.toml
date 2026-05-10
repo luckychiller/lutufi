@@ -26,6 +26,7 @@ log          = "0.4"
 petgraph     = { version = "0.6", features = ["serde"] }
 rand         = "0.8"
 rand_distr   = "0.4"
+statrs       = "0.16"
 chrono       = "0.4"
 pyo3         = { version = "0.22", features = ["extension-module", "abi3-py39"], optional = true }
 
@@ -94,6 +95,14 @@ path = "tests/unit/variational_tests.rs"
 [[test]]
 name = "unit_d_separation"
 path = "tests/unit/d_separation_tests.rs"
+
+[[test]]
+name = "unit_learning"
+path = "tests/unit/learning_tests.rs"
+
+[[test]]
+name = "unit_causal"
+path = "tests/unit/causal_tests.rs"
 
 [[test]]
 name = "integration_inference_unification"

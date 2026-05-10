@@ -84,7 +84,7 @@ fn build_grid_network(rows: usize, cols: usize) -> BayesianNetwork {
             let parents = bn.graph.parents(&var.id());
             let mut parent_vars = Vec::new();
             for p_id in parents {
-                parent_vars.push(bn.variables.get(&p_id).unwrap());
+                parent_vars.push(bn.variables().get(&p_id).unwrap());
             }
             
             let num_parents = parent_vars.len();
