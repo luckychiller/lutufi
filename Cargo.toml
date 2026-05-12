@@ -29,6 +29,9 @@ rand_distr   = "0.4"
 statrs       = "0.16"
 chrono       = "0.4"
 pyo3         = { version = "0.22", features = ["extension-module", "abi3-py39"], optional = true }
+jni          = { version = "0.21", optional = true }
+rayon        = "1.7"
+memmap2      = "0.9"
 
 [dev-dependencies]
 approx    = "0.5"
@@ -38,6 +41,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [features]
 default = []
 python  = ["pyo3"]
+java    = ["jni"]
 
 # Tests 
 [[test]]
@@ -111,6 +115,10 @@ path = "tests/unit/missing_data_tests.rs"
 [[test]]
 name = "integration_inference_unification"
 path = "tests/integration/inference_unification.rs"
+
+[[test]]
+name = "benchmark_networks"
+path = "tests/benchmarks/benchmark_networks.rs"
 
 # Benchmarks 
 [[bench]]

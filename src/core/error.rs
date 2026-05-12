@@ -4,7 +4,7 @@
 use thiserror::Error;
 
 /// The master error type for all Lutufi operations.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum LutufiError {
 
     // Variable and Domain Errors 

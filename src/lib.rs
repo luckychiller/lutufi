@@ -9,8 +9,17 @@ pub mod core;
 #[path = "../bindings/ffi/mod.rs"]
 pub mod ffi;
 
+#[cfg(feature = "java")]
+#[path = "../bindings/java_ffi/mod.rs"]
+pub mod java_ffi;
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+
+#[cfg(feature = "java")]
+use jni::JNIEnv;
+#[cfg(feature = "java")]
+use jni::objects::JClass;
 
 /// Prelude module for convenient imports
 pub mod prelude {

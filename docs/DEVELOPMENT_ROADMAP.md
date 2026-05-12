@@ -698,13 +698,14 @@ This phase is not an afterthought. It is the mechanism through which Lutufi reac
 
 **The structure of every example:**
 
-1. Problem statement (what research question this addresses)
-2. Data (real dataset where available, synthetic with documented generation process otherwise)
-3. Model specification (the Lutufi code)
-4. Inference (running the query)
-5. Results (interpreting the output)
-6. Discussion (what this demonstrates, what a researcher could do next)
-7. References (papers this example draws from)
+1. Each Example in its folder.
+2. Problem statement (what research question this addresses)
+3. Data (real dataset where available, synthetic with documented generation process otherwise)
+4. Model specification (the Lutufi code)
+5. Inference (running the query)
+6. Results (interpreting the output)
+7. Discussion (what this demonstrates, what a researcher could do next)
+8. References (papers this example draws from)
 
 ---
 

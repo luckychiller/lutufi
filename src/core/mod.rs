@@ -31,6 +31,10 @@ pub mod factor;
 pub mod graph;
 /// Module for missing data handling (Phase 7)
 pub mod missing_data;
+/// Module for numerical utilities and resource budgets (Phase 10)
+pub mod numerics;
+/// Module for scalability features (Phase 10)
+pub mod scalability;
 
 /// Re-export commonly used types
 pub use models::*;
