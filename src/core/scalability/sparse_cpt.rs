@@ -28,6 +28,9 @@ pub struct SparseCptStorage {
 }
 
 impl SparseCptStorage {
+    /// Construct a new `SparseCptStorage` from a scope and dense values.
+    /// Automatically selects COO storage when density is below the threshold
+    /// or the number of entries exceeds 1,000,000.
     pub fn new(scope: Scope, values: Vec<f64>) -> LutufiResult<Self> {
         if values.len() != scope.num_entries() {
             return Err(LutufiError::CptWrongShape {
@@ -78,6 +81,7 @@ impl SparseCptStorage {
         }
     }
 
+    /// Build a sparse CPT from an existing `TabularFactor`, discarding near-zero entries.
     pub fn from_tabular_factor(factor: &TabularFactor) -> Self {
         let scope = factor.scope().clone();
         let num_entries = scope.num_entries();
@@ -111,8 +115,10 @@ impl SparseCptStorage {
         }
     }
 
+    /// Returns a reference to the variable scope of this CPT.
     pub fn scope(&self) -> &Scope { &self.scope }
 
+    /// Look up the log-probability at a flat index. Returns `NEG_INFINITY` for zero entries.
     pub fn log_value_at(&self, index: usize) -> f64 {
         if index >= self.num_rows {
             return f64::NEG_INFINITY;
@@ -123,25 +129,31 @@ impl SparseCptStorage {
             .unwrap_or(f64::NEG_INFINITY)
     }
 
+    /// Total number of entries (including zeros) in the full CPT.
     pub fn num_entries(&self) -> usize { self.num_rows }
+    /// Number of stored non-zero entries.
     pub fn num_nonzeros(&self) -> usize { self.log_values.len() }
+    /// Ratio of non-zero entries to total entries.
     pub fn density(&self) -> f64 {
         if self.num_rows == 0 { 0.0 } else { self.num_nonzeros() as f64 / self.num_rows as f64 }
     }
 
+    /// Attempt to return a CSR view (currently panics; use `to_csr_owned` instead).
     pub fn to_csr(&self) -> CsMatView<f64> {
         unreachable!("Use to_csr_owned instead");
     }
 
+    /// Convert to an owned CSR sparse matrix by exponentiating log-values.
     pub fn to_csr_owned(&self) -> CsMat<f64> {
         let mut triplet = TriMat::new((self.num_rows, self.num_cols));
         for (&r, &lv) in self.row_indices.iter().zip(self.log_values.iter()) {
-            let v = if lv == f64::NEG_INFINITY { 0.0 } else { lv.exp() };
+            let v = if lv.is_infinite() && lv.is_sign_negative() { 0.0 } else { lv.exp() };
             triplet.add_triplet(r, 0, v);
         }
         triplet.to_csr()
     }
 
+    /// Approximate memory used by this sparse CPT (indices + values + scope overhead).
     pub fn memory_bytes(&self) -> usize {
         self.row_indices.len() * std::mem::size_of::<usize>()
             + self.col_indices.len() * std::mem::size_of::<usize>()
@@ -149,6 +161,7 @@ impl SparseCptStorage {
             + std::mem::size_of::<Scope>()
     }
 
+    /// Expand the sparse storage back to a dense vector of probabilities.
     pub fn to_dense(&self) -> Vec<f64> {
         let mut result = vec![0.0; self.num_rows];
         for (&r, &lv) in self.row_indices.iter().zip(self.log_values.iter()) {
@@ -160,6 +173,9 @@ impl SparseCptStorage {
     }
 }
 
+/// Choose between sparse and dense storage for a CPT based on its density.
+/// Returns `TabularFactor::Sparse` when density is below `SPARSE_DENSITY_THRESHOLD`
+/// or the number of entries exceeds 1,000,000; otherwise returns `TabularFactor::Dense`.
 pub fn choose_storage_format(scope: &Scope, values: &[f64]) -> TabularFactor {
     let density = estimate_density(values);
     if density < SPARSE_DENSITY_THRESHOLD || values.len() > 1_000_000 {

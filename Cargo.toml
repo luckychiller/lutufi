@@ -32,6 +32,11 @@ pyo3         = { version = "0.22", features = ["extension-module", "abi3-py39"],
 jni          = { version = "0.21", optional = true }
 rayon        = "1.7"
 memmap2      = "0.9"
+quick-xml    = "0.36"
+clap         = { version = "4.5", features = ["derive"] }
+wgpu         = { version = "22.1", optional = true }
+bytemuck     = { version = "1.14", features = ["derive"], optional = true }
+pollster     = { version = "0.3", optional = true }
 
 [dev-dependencies]
 approx    = "0.5"
@@ -42,6 +47,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 default = []
 python  = ["pyo3"]
 java    = ["jni"]
+gpu     = ["wgpu", "bytemuck", "pollster"]
 
 # Tests 
 [[test]]
@@ -125,6 +131,11 @@ path = "tests/benchmarks/benchmark_networks.rs"
 name = "factor_operations"
 path = "benches/factor_operations.rs"
 harness = false
+
+# CLI binary
+[[bin]]
+name = "lutufi"
+path = "src/bin/lutufi.rs"
 
 # Scripts
 [[bin]]

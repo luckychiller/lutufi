@@ -33,6 +33,8 @@ impl std::fmt::Debug for LazyFactor {
 }
 
 impl LazyFactor {
+    /// Create a new lazy factor with the given variable IDs, domain sizes,
+    /// and a closure that produces the factor on first access.
     pub fn new<F>(var_ids: Vec<VariableId>, sizes: Vec<usize>, computer: F) -> Self
     where
         F: Fn() -> LutufiResult<TabularFactor> + Send + Sync + 'static,
@@ -45,6 +47,8 @@ impl LazyFactor {
         }
     }
 
+    /// Force evaluation and return a reference to the computed factor.
+    /// Subsequent calls return the cached result without re-evaluating.
     pub fn compute(&self) -> LutufiResult<&TabularFactor> {
         let result = self.cached.get_or_init(|| (self.computer)());
         match result {
@@ -53,14 +57,17 @@ impl LazyFactor {
         }
     }
 
+    /// Build and return the `Scope` from the stored variable IDs and sizes.
     pub fn scope(&self) -> Scope {
         Scope::from_ids_and_sizes(self.var_ids.clone(), self.sizes.clone())
     }
 
+    /// Returns `true` if the factor has already been computed and cached.
     pub fn is_computed(&self) -> bool {
         self.cached.get().is_some()
     }
 
+    /// Total number of entries in the factor (product of domain sizes).
     pub fn num_entries(&self) -> usize {
         self.sizes.iter().product()
     }
@@ -72,11 +79,14 @@ impl LazyFactor {
 /// for queries that only access a subset of the network.
 #[derive(Debug, Clone)]
 pub struct LazyFactorGraph {
+    /// Variables in the graph.
     variables: Vec<Variable>,
+    /// Lazily-evaluated factors.
     factors: Vec<LazyFactor>,
 }
 
 impl LazyFactorGraph {
+    /// Create an empty lazy factor graph with the given variable list.
     pub fn new(variables: Vec<Variable>) -> Self {
         LazyFactorGraph {
             variables,
@@ -84,18 +94,23 @@ impl LazyFactorGraph {
         }
     }
 
+    /// Add a lazy factor to the graph.
     pub fn add_factor(&mut self, factor: LazyFactor) {
         self.factors.push(factor);
     }
 
+    /// Returns a slice of all lazy factors in the graph.
     pub fn factors(&self) -> &[LazyFactor] { &self.factors }
 
+    /// Returns a slice of all variables in the graph.
     pub fn variables(&self) -> &[Variable] { &self.variables }
 
+    /// Compute all factors and return references to their results.
     pub fn compute_all(&self) -> LutufiResult<Vec<&TabularFactor>> {
         self.factors.iter().map(|f| f.compute()).collect()
     }
 
+    /// Compute and return all factors that involve the given variable.
     pub fn compute_for_variable(&self, var_id: &VariableId) -> LutufiResult<Vec<TabularFactor>> {
         let mut results = Vec::new();
         for lazy in &self.factors {
@@ -108,6 +123,8 @@ impl LazyFactorGraph {
 }
 
 /// Build a lazy factor graph from a Bayesian network.
+/// Build a `LazyFactorGraph` from an existing `BayesianNetwork`,
+/// wrapping each CPD in a `LazyFactor` that defers computation.
 pub fn build_lazy_factor_graph(
     bn: &crate::core::models::bayesian_network::BayesianNetwork,
 ) -> LutufiResult<LazyFactorGraph> {

@@ -204,7 +204,7 @@ impl VariationalEngine {
         // Normalize in log-space (softmax)
         let mut max_log = f64::NEG_INFINITY;
         for &v in &new_log_q { if v > max_log { max_log = v; } }
-        let log_sum = if max_log == f64::NEG_INFINITY { 
+        let log_sum = if max_log.is_infinite() && max_log.is_sign_negative() { 
             0.0 
         } else {
             max_log + new_log_q.iter().map(|&v| (v - max_log).exp()).sum::<f64>().ln()
@@ -234,7 +234,7 @@ impl VariationalEngine {
             if multi_idx[var_pos] != var_val { continue; }
             
             let log_f = factor.log_value_at(i);
-            if log_f == f64::NEG_INFINITY { continue; }
+            if log_f.is_infinite() && log_f.is_sign_negative() { continue; }
             
             let mut q_prob = 1.0;
             for (j, &other_id) in scope.variable_ids().iter().enumerate() {
@@ -266,7 +266,7 @@ impl VariationalEngine {
             let n = q.scope().num_entries();
             for i in 0..n {
                 let log_q = q.log_value_at(i);
-                if log_q != f64::NEG_INFINITY {
+                if !log_q.is_infinite() || !log_q.is_sign_negative() {
                     entropy -= q.value_at(i) * log_q;
                 }
             }
@@ -286,7 +286,7 @@ impl VariationalEngine {
         
         for i in 0..n {
             let log_f = factor.log_value_at(i);
-            if log_f == f64::NEG_INFINITY { continue; }
+            if log_f.is_infinite() && log_f.is_sign_negative() { continue; }
             
             let multi_idx = multi_index_from_flat(i, scope.sizes());
             let mut q_prob = 1.0;

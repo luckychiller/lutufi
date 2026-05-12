@@ -11,8 +11,11 @@ pub enum TransitionModel {
     TimeVarying(Vec<BayesianNetwork>),
     /// Regime-switching: a set of transitions selected by a regime variable.
     RegimeSwitching {
+        /// One Bayesian network per regime representing transition dynamics.
         regimes: Vec<BayesianNetwork>,
+        /// Regime transition probability matrix (from regime i to regime j).
         regime_transition: Vec<Vec<f64>>,
+        /// Initial probability distribution over regimes.
         initial_regime: Vec<f64>,
     },
 }

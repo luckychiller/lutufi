@@ -29,6 +29,8 @@ pub mod assignment;
 pub mod factor;
 /// Module for graph structures (directed and undirected)
 pub mod graph;
+/// Module for numerical backends (CPU, GPU)
+pub mod backend;
 /// Module for missing data handling (Phase 7)
 pub mod missing_data;
 /// Module for numerical utilities and resource budgets (Phase 10)

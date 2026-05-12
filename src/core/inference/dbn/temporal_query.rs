@@ -11,8 +11,11 @@ use super::{DBNInference, DBNInferenceEngine, DBNInferenceOptions};
 /// Mode of temporal inference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemporalMode {
+    /// Filtering: compute P(Z_t | O_{1:t}) - state distribution given evidence up to time t.
     Filter,
+    /// Smoothing: compute P(Z_t | O_{1:T}) - state distribution given all evidence.
     Smooth,
+    /// Prediction: compute P(Z_{t+h} | O_{1:t}) - forecast future states.
     Predict,
 }
 
@@ -99,7 +102,6 @@ impl TemporalQueryEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::domain::Domain;
 
     #[test]
     fn test_temporal_query_engine_empty() {

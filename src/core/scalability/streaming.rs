@@ -27,6 +27,7 @@ pub struct StreamingDBNEngine {
 }
 
 impl StreamingDBNEngine {
+    /// Create a new streaming DBN inference engine with the given lookback window.
     pub fn new(dbn: DynamicBayesianNetwork, lookback_window: usize) -> Self {
         StreamingDBNEngine {
             dbn,
@@ -149,7 +150,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::domain::Domain;
 
     #[test]
     fn test_streaming_engine_creation() {

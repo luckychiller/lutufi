@@ -6,9 +6,13 @@ use crate::core::error::{LutufiError, LutufiResult};
 /// Kalman Filter result.
 #[derive(Debug, Clone)]
 pub struct KalmanFilterResult {
+    /// State mean estimates at each time step.
     pub means: Vec<Array1<f64>>,
+    /// State covariance estimates at each time step.
     pub covariances: Vec<Array2<f64>>,
+    /// Log-likelihood of observations given the filtered state.
     pub log_likelihoods: Vec<f64>,
+    /// Time spent running the filter.
     pub computation_time: std::time::Duration,
 }
 

@@ -22,6 +22,7 @@ pub struct ChunkedVariableElimination<'a> {
 }
 
 impl<'a> ChunkedVariableElimination<'a> {
+    /// Create a new chunked variable elimination engine.
     pub fn new(model: &'a BayesianNetwork, budget: &'a ResourceBudget) -> Self {
         let spill_dir = std::env::temp_dir().join("lutufi_spill");
         let _ = std::fs::create_dir_all(&spill_dir);
@@ -191,7 +192,6 @@ impl<'a> ChunkedVariableElimination<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::variable::Variable;
     use crate::core::domain::Domain;
 
     #[test]

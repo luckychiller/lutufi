@@ -13,7 +13,9 @@ use super::evidence_manager::EvidenceManager;
 /// Options for incremental inference updates.
 #[derive(Debug, Clone)]
 pub struct IncrementalUpdateOptions {
+    /// Whether to use cached inference results when network structure hasn't changed.
     pub use_cache: bool,
+    /// Proportion of network changes that triggers full recompilation (0.0-1.0).
     pub full_recompile_threshold: f64,
 }
 

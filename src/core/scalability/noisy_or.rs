@@ -32,6 +32,11 @@ pub struct NoisyOrFactor {
 }
 
 impl NoisyOrFactor {
+    /// Create a new Noisy-OR factor.
+    ///
+    /// `child` is the binary child variable, `parents` are its binary parents,
+    /// `leak` is the probability the child is true when all parents are false,
+    /// and `inhibitions[i]` is P(child = false | parent_i = true, all others false).
     pub fn new(
         child: &Variable,
         parents: &[&Variable],
@@ -79,9 +84,13 @@ impl NoisyOrFactor {
         })
     }
 
+    /// Returns the child variable ID.
     pub fn child_id(&self) -> VariableId { self.child_id }
+    /// Returns the parent variable IDs.
     pub fn parent_ids(&self) -> &[VariableId] { &self.parent_ids }
+    /// Returns the leak probability.
     pub fn leak(&self) -> f64 { self.leak }
+    /// Returns the inhibition probabilities.
     pub fn inhibitions(&self) -> &[f64] { &self.inhibitions }
 
     /// Compute P(child = false | parent_config) where parent_config is a
@@ -93,7 +102,7 @@ impl NoisyOrFactor {
                 log_prob += self.log_inhibitions[i];
             }
         }
-        if log_prob == f64::NEG_INFINITY {
+        if log_prob.is_infinite() && log_prob.is_sign_negative() {
             0.0
         } else {
             log_prob.exp().min(1.0)

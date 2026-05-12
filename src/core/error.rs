@@ -166,6 +166,21 @@ pub enum LutufiError {
         reason: String 
     },
 
+    // Resource Limit Errors
+
+    /// Raised when a configurable resource limit is exceeded.
+    #[error("Resource limit exceeded: {resource} (limit: {limit}, requested: {requested}). {message}")]
+    ResourceLimitExceeded {
+        /// The resource that was exceeded (e.g., "memory", "nodes", "edges", "cpt_size", "inference_time").
+        resource: String,
+        /// The configured limit.
+        limit: String,
+        /// What was actually requested or needed.
+        requested: String,
+        /// Human-readable explanation.
+        message: String,
+    },
+
     // System Errors
 
     /// Raised when an internal invariant is violated. Indicates a bug in Lutufi.

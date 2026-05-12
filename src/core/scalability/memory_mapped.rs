@@ -11,7 +11,9 @@ use crate::core::{
 /// Storage backend for factors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageBackend {
+    /// All factors stored in memory.
     InMemory,
+    /// Large factors stored on disk via memory-mapped files.
     MemoryMapped,
 }
 
@@ -30,6 +32,8 @@ pub struct MemoryMappedFactorStore {
 }
 
 impl MemoryMappedFactorStore {
+    /// Create a new store backed by the given directory.
+    /// Factors exceeding the memory budget are spilled to disk as JSON files.
     pub fn new<P: AsRef<Path>>(mmap_dir: P, budget: &ResourceBudget) -> Self {
         let dir = mmap_dir.as_ref().to_path_buf();
         let _ = std::fs::create_dir_all(&dir);
@@ -43,6 +47,7 @@ impl MemoryMappedFactorStore {
         }
     }
 
+    /// Insert a factor, spilling to disk if the memory budget would be exceeded.
     pub fn insert(&mut self, key: (VariableId, usize), factor: TabularFactor) -> LutufiResult<()> {
         let factor_bytes = factor.scope().num_entries() * std::mem::size_of::<f64>();
         let will_exceed = self.total_memory_bytes + factor_bytes > self.max_memory_bytes;
@@ -65,6 +70,7 @@ impl MemoryMappedFactorStore {
         Ok(())
     }
 
+    /// Retrieve a factor from memory or disk.
     pub fn get(&self, key: &(VariableId, usize)) -> LutufiResult<Option<TabularFactor>> {
         if let Some(factor) = self.in_memory.get(key) {
             return Ok(Some(factor.clone()));
@@ -81,14 +87,19 @@ impl MemoryMappedFactorStore {
         Ok(None)
     }
 
+    /// Check whether a key exists in memory or on disk.
     pub fn contains_key(&self, key: &(VariableId, usize)) -> bool {
         self.in_memory.contains_key(key) || self.mmapped.contains_key(key)
     }
 
+    /// Number of factors stored in memory.
     pub fn in_memory_count(&self) -> usize { self.in_memory.len() }
+    /// Number of factors spilled to disk.
     pub fn mmapped_count(&self) -> usize { self.mmapped.len() }
+    /// Total memory used by in-memory factors in bytes.
     pub fn memory_usage_bytes(&self) -> usize { self.total_memory_bytes }
 
+    /// Remove all factors and clean up disk files.
     pub fn cleanup(&mut self) -> LutufiResult<()> {
         for (_, path) in self.mmapped.drain() {
             let _ = std::fs::remove_file(&path);

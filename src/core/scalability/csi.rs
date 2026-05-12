@@ -33,6 +33,7 @@ pub struct ContextSpecificIndependence {
 }
 
 impl ContextSpecificIndependence {
+    /// Create a new CSI relation.
     pub fn new(
         child_id: VariableId,
         parent_ids: Vec<VariableId>,
@@ -54,9 +55,13 @@ impl ContextSpecificIndependence {
         }
     }
 
+    /// Returns the child variable ID.
     pub fn child_id(&self) -> VariableId { self.child_id }
+    /// Returns the irrelevant parent variable ID.
     pub fn irrelevant_parent(&self) -> VariableId { self.irrelevant_parent }
+    /// Returns the context variable ID.
     pub fn context_variable(&self) -> VariableId { self.context_variable }
+    /// Returns the set of context values where the parent is irrelevant.
     pub fn context_values(&self) -> &HashSet<usize> { &self.context_values }
 
     /// Check if the irrelevant parent is active for a given context.
@@ -82,6 +87,7 @@ impl ContextSpecificIndependence {
         (total_entries as f64 * fraction_reduced * (1.0 - 1.0 / irrelevant_size as f64)) as usize
     }
 
+    /// Reduce a full CPT by removing the irrelevant parent in the given context.
     pub fn reduce_cpt(&mut self, full_cpt: &TabularFactor, domain_sizes: &HashMap<VariableId, usize>) -> LutufiResult<()> {
         let scope = full_cpt.scope();
         let _child_pos = scope.variable_ids().iter()
@@ -150,14 +156,18 @@ pub struct CsiManager {
 }
 
 impl CsiManager {
+    /// Create an empty CSI manager.
     pub fn new() -> Self { CsiManager { relations: Vec::new() } }
 
+    /// Add a CSI relation to the manager.
     pub fn add_relation(&mut self, csi: ContextSpecificIndependence) {
         self.relations.push(csi);
     }
 
+    /// Returns all managed CSI relations.
     pub fn relations(&self) -> &[ContextSpecificIndependence] { &self.relations }
 
+    /// Compute the total number of CPT entries saved by all managed relations.
     pub fn total_entries_saved(&self, child_domain_size: usize, domain_sizes: &HashMap<VariableId, usize>) -> usize {
         self.relations.iter()
             .map(|r| r.entries_saved(child_domain_size, domain_sizes))

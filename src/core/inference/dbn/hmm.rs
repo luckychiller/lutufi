@@ -5,7 +5,9 @@ use crate::core::{
 
 /// Hidden Markov Model engine with exact inference algorithms.
 pub struct HMMEngine {
+    /// Number of hidden states in the model.
     pub num_states: usize,
+    /// Number of distinct observation symbols.
     pub num_observations: usize,
     initial: Vec<f64>,
     transition: Vec<Vec<f64>>,

@@ -25,6 +25,7 @@ pub struct ParallelLBPEngine {
 }
 
 impl ParallelLBPEngine {
+    /// Create a new parallel LBP engine for the given factor graph and options.
     pub fn new(graph: FactorGraph, options: LBPOptions) -> Self {
         ParallelLBPEngine {
             graph: Arc::new(graph),
@@ -61,6 +62,7 @@ impl ParallelLBPEngine {
         Ok(())
     }
 
+    /// Run parallel loopy belief propagation with the given evidence.
     pub fn run(&mut self, evidence: &Assignment) -> LutufiResult<LBPResult> {
         let graph = self.graph.as_ref();
 
