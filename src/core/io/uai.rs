@@ -283,12 +283,12 @@ impl UaiFormat {
                         .product();
                     let parent_card = parent_card.max(1);
 
-                    let mut matrix = vec![vec![0.0f64; parent_card]; child_domain_size];
+                    let mut matrix = vec![vec![0.0f64; child_domain_size]; parent_card];
                     for pc in 0..parent_card {
                         for cs in 0..child_domain_size {
                             let idx_flat = pc * child_domain_size + cs;
                             if idx_flat < table.len() {
-                                matrix[cs][pc] = table[idx_flat];
+                                matrix[pc][cs] = table[idx_flat];
                             }
                         }
                     }
@@ -331,14 +331,14 @@ mod tests {
         let cpt0 = ConditionalProbabilityTable::from_values(
             &x0,
             &[] as &[&Variable],
-            vec![vec![0.5], vec![0.5]],
+            vec![vec![0.5, 0.5]],
         )
         .unwrap();
         net.set_cpd("X0", cpt0).unwrap();
         let cpt1 = ConditionalProbabilityTable::from_values(
             &x1,
             &[&x0],
-            vec![vec![0.9, 0.2], vec![0.1, 0.8]],
+            vec![vec![0.9, 0.1], vec![0.2, 0.8]],
         )
         .unwrap();
         net.set_cpd("X1", cpt1).unwrap();

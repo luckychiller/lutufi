@@ -140,12 +140,12 @@ pub struct VerifyCheck {
 }
 
 pub fn flatten_to_2d(values: &[f64], child_size: usize, parent_configs: usize) -> Vec<Vec<f64>> {
-    let mut matrix = vec![vec![0.0f64; parent_configs.max(1)]; child_size];
+    let mut matrix = vec![vec![0.0f64; child_size]; parent_configs.max(1)];
     for pc in 0..parent_configs.max(1) {
         for cs in 0..child_size {
             let idx = pc * child_size + cs;
             if idx < values.len() {
-                matrix[cs][pc] = values[idx];
+                matrix[pc][cs] = values[idx];
             }
         }
     }

@@ -333,12 +333,12 @@ impl BifFormat {
                 .product();
             let parent_card = parent_card.max(1);
 
-            let mut matrix = vec![vec![0.0f64; parent_card]; child_domain_size];
+            let mut matrix = vec![vec![0.0f64; child_domain_size]; parent_card];
             for pc in 0..parent_card {
                 for cs in 0..child_domain_size {
                     let idx = pc * child_domain_size + cs;
                     if idx < table.len() {
-                        matrix[cs][pc] = table[idx];
+                        matrix[pc][cs] = table[idx];
                     }
                 }
             }
@@ -385,14 +385,14 @@ mod tests {
         let cpt_x = ConditionalProbabilityTable::from_values(
             &x_var,
             &[] as &[&Variable],
-            vec![vec![0.5], vec![0.5]],
+            vec![vec![0.5, 0.5]],
         )
         .unwrap();
         net.set_cpd("X", cpt_x).unwrap();
         let cpt_y = ConditionalProbabilityTable::from_values(
             &y_var,
             &[&x_var],
-            vec![vec![0.9, 0.2], vec![0.1, 0.8]],
+            vec![vec![0.9, 0.1], vec![0.2, 0.8]],
         )
         .unwrap();
         net.set_cpd("Y", cpt_y).unwrap();

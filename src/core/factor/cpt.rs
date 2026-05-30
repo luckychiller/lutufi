@@ -39,23 +39,23 @@ impl ConditionalProbabilityTable {
             });
         }
 
-        for j in 0..num_cols {
+        for i in 0..num_rows {
             let mut sum = 0.0;
-            for i in 0..num_rows {
+            for j in 0..num_cols {
                 sum += values[i][j];
             }
             if (sum - 1.0).abs() > 1e-6 {
                 return Err(LutufiError::CptDoesNotNormalize {
                     variable: child.name().to_string(),
-                    parent_config: format!("index {}", j),
+                    parent_config: format!("index {}", i),
                     actual_sum: sum,
                 });
             }
         }
 
         let mut flat_values = Vec::with_capacity(num_rows * num_cols);
-        for j in 0..num_cols {
-            for i in 0..num_rows {
+        for i in 0..num_rows {
+            for j in 0..num_cols {
                 flat_values.push(values[i][j]);
             }
         }

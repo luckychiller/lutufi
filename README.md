@@ -5,14 +5,22 @@
 [![Build Status](https://img.shields.io/badge/build-pre--alpha-yellow.svg)](docs/DEVELOPMENT_ROADMAP.md)
 [![Rust](https://img.shields.io/badge/rust-%E2%9C%93-orange.svg)](Cargo.toml)
 
-> **High-Performance Probabilistic Inference Engine for Network Analysis**
+> **High-Performance Probabilistic Inference Engine for Large-Scale Network Analysis**
+
+---
+
+## 📄 Academic & Research Context
+
+For researchers and potential collaborators, please see the following core documents:
+- [**Two-Page Technical Summary**](docs/outreach/TECHNICAL_SUMMARY.md) — Architectural decisions, benchmarks, and gap analysis.
+- [**Personal Research Statement**](docs/outreach/RESEARCH_STATEMENT.md) — Scientific motivation and future research directions.
 
 ---
 
 ## Table of Contents
 
 - [What Lutufi Is](#what-lutufi-is)
-- [What Problem It Solves](#what-problem-it-solves)
+- [Core Capabilities](#core-capabilities)
 - [Current Status](#current-status)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -24,11 +32,16 @@
 
 ## What Lutufi Is
 
-Lutufi is a high-performance probabilistic inference engine specifically designed for network analysis. It implements state-of-the-art algorithms for Bayesian networks, Markov random fields, and related graphical models. Built primarily in Rust for maximum performance and memory safety, Lutufi provides Python bindings that make it accessible to data scientists and researchers without sacrificing speed. The library targets critical domains including epidemiology (disease spread modeling), finance (risk contagion analysis), social networks (influence propagation), and intelligence analysis (threat network detection), where understanding complex probabilistic relationships in networked data is essential.
+Lutufi is a high-performance probabilistic inference engine designed to bridge the gap between **network science** (structural analysis) and **probabilistic graphical models** (PGMs). Built in Rust for memory safety and zero-cost abstractions, it scales to networks with hundreds of thousands of nodes and millions of edges, providing researchers with the tools to reason about uncertainty in complex social and economic systems.
 
-## What Problem It Solves
+## Core Capabilities
 
-Existing probabilistic inference tools such as pgmpy and bnlearn, while functional, struggle with the computational demands of large-scale networks, often becoming prohibitively slow when dealing with thousands of nodes or complex dependency structures. Current solutions also lack comprehensive support for real-world challenges: proper handling of missing data without biased imputation, modeling temporal dynamics in evolving networks, and analyzing multilayer networks where different types of relationships interact. No open-source tool currently combines all these advanced features with the high performance necessary for production-scale analysis. Lutufi fills this critical gap by leveraging GPU acceleration, sparse matrix operations, and modern inference algorithms to deliver enterprise-grade probabilistic network analysis capabilities.
+- **Log-Space Inference:** Numerical stability for high-dimensional models and long causal chains.
+- **Causal Reasoning:** Native implementation of Pearl's **do-calculus** and the **ID Algorithm** for causal effect identification.
+- **Scalability:** Optimized sparse matrix operations and automatic algorithm selection (Exact vs. Approximate).
+- **Dynamic Networks:** Full support for Dynamic Bayesian Networks (DBNs) with temporal filtering and smoothing.
+- **Dark Networks:** Bayesian reconstruction of hidden structures from unreliable observational data.
+- **Multilayer Support:** Inference over networks with multiple types of edges (e.g., social + financial).
 
 ## Current Status
 
@@ -95,49 +108,49 @@ pip install -e ".[dev,visualization,docs]"
 
 ## Quick Start
 
-Below is an aspirational example demonstrating the intended Lutufi API. This code represents the target functionality and will run once the library reaches feature completeness:
+Lutufi uses a builder pattern for efficient network construction and parameter setting. Below is a working example based on a simple epidemiology model:
 
 ```python
 import lutufi
-import pandas as pd
+from lutufi.inference import InferenceEngine
 
-# Create a Bayesian network for disease outbreak analysis
-# Define nodes: Symptoms, Diseases, Risk Factors
-network = lutufi.BayesianNetwork()
+# 1. Build the network using the builder pattern
+builder = (lutufi.BayesianNetwork.builder()
+    .add_variable("Fever", domain=["high", "none"])
+    .add_variable("Cough", domain=["mild", "none"])
+    .add_variable("Flu", domain=["yes", "no"])
+    .add_edge("Flu", "Fever")
+    .add_edge("Flu", "Cough"))
 
-# Add nodes with their domains
-network.add_node("Fever", domain=["low", "high", "none"])
-network.add_node("Cough", domain=["mild", "severe", "none"])
-network.add_node("Disease", domain=["flu", "cold", "none"])
-network.add_node("AgeGroup", domain=["child", "adult", "elderly"])
+# 2. Set Conditional Probability Tables (CPTs)
+# P(Flu=yes) = 0.01
+builder.set_cpd("Flu", [0.01, 0.99])
 
-# Define the network structure (directed edges)
-network.add_edges([
-    ("AgeGroup", "Disease"),
-    ("Disease", "Fever"),
-    ("Disease", "Cough"),
+# P(Fever | Flu)
+# Row 0: high, Row 1: none
+# Columns: Flu=yes, Flu=no
+builder.set_cpd("Fever", [
+    [0.9, 0.05], # Fever=high
+    [0.1, 0.95]  # Fever=none
 ])
 
-# Learn parameters from observational data
-data = pd.read_csv("patient_data.csv")
-network.fit(data, method="maximum_likelihood")
+# P(Cough | Flu)
+# Row 0: mild, Row 1: none
+# Columns: Flu=yes, Flu=no
+builder.set_cpd("Cough", [
+    [0.8, 0.1],  # Cough=mild
+    [0.2, 0.9]   # Cough=none
+])
 
-# Run inference using Belief Propagation
-inference = lutufi.BeliefPropagation(network)
+network = builder.build()
 
-# Query: What's the probability of flu given high fever?
-result = inference.query(
-    variables=["Disease"],
-    evidence={"Fever": "high", "AgeGroup": "elderly"}
-)
-print(result)  # Probability distribution over diseases
+# 3. Run inference
+engine = InferenceEngine(network)
 
-# Predict most likely disease
-prediction = inference.map_query(
-    variables=["Disease"],
-    evidence={"Fever": "high", "Cough": "severe"}
-)
-print(f"Most likely diagnosis: {prediction['Disease']}")
+# Query: Probability of Flu given Fever=high
+result = engine.query(["Flu"], evidence={"Fever": "high"})
+print(result.to_dict()["distributions"]["Flu"])
+# Output: {'yes': 0.1538, 'no': 0.8462}
 ```
 
 ### Advanced: Temporal Network Analysis
