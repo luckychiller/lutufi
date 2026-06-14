@@ -53,7 +53,7 @@ The library occupies a unique position in the Python ecosystem as the most featu
 
 ### Current Status
 
-As of 2025-2026, pgmpy remains actively maintained but shows signs of maturity. The core API has stabilized, with most development focused on bug fixes, documentation improvements, and incremental feature additions. The library maintains compatibility with modern Python versions (3.8+) and integrates well with the scientific Python stack. However, major architectural changes are infrequent, reflecting the stability of the codebase and the established user community.
+As of 2025-2026, pgmpy remains actively maintained but shows signs of maturity. The core API has stabilized, with most development focused on bug fixes, documentation improvements, and incremental feature additions. The library maintains compatibility with modern Python versions (3.9+) and integrates well with the scientific Python stack. However, major architectural changes are infrequent, reflecting the stability of the codebase and the established user community.
 
 ---
 

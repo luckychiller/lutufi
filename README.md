@@ -1,7 +1,7 @@
 # Lutufi
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Python Versions](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
 [![Build Status](https://img.shields.io/badge/build-pre--alpha-yellow.svg)](docs/DEVELOPMENT_ROADMAP.md)
 [![Rust](https://img.shields.io/badge/rust-%E2%9C%93-orange.svg)](Cargo.toml)
 
@@ -66,7 +66,7 @@ pip install lutufi
 To use Lutufi today, you must build it from source. This requires:
 
 - **Rust toolchain** (1.70 or later) - [Install Rust](https://rustup.rs/)
-- **Python** 3.8 or later (3.11+ recommended)
+- **Python** 3.9 or later (3.11+ recommended)
 - **maturin** for building Python bindings
 
 #### Installation Steps

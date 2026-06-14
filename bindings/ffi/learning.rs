@@ -10,11 +10,15 @@ use crate::core::{
 };
 use crate::ffi::models::PyBayesianNetwork;
 
+/// Estimate parameters (CPTs) of a Bayesian network from data.
 #[pyclass(name = "_RustParameterEstimator")]
 pub struct PyParameterEstimator {
     inner: ParameterEstimator,
 }
 
+/// Learn the structure (graph) of a Bayesian network from data.
+///
+/// Supports score-based (hill climbing, GES) and constraint-based (PC, FCI) algorithms.
 #[pyclass(name = "_RustStructureLearner")]
 pub struct PyStructureLearner {
     score_based: ScoreBasedLearner,
@@ -23,6 +27,7 @@ pub struct PyStructureLearner {
 
 #[pymethods]
 impl PyParameterEstimator {
+    /// Create a parameter estimator with the given method ("mle" or "bayesian").
     #[new]
     #[pyo3(signature = (method="mle", alpha=0.5, max_iterations=100))]
     pub fn new(method: &str, alpha: f64, max_iterations: usize) -> PyResult<Self> {
@@ -40,6 +45,7 @@ impl PyParameterEstimator {
         Ok(PyParameterEstimator { inner: ParameterEstimator::new(options) })
     }
 
+    /// Fit the CPTs of a Bayesian network to the provided data.
     pub fn fit(
         &self,
         model: &mut PyBayesianNetwork,
@@ -52,6 +58,7 @@ impl PyParameterEstimator {
 
 #[pymethods]
 impl PyStructureLearner {
+    /// Create a new structure learner.
     #[new]
     pub fn new() -> Self {
         Self {
@@ -60,6 +67,7 @@ impl PyStructureLearner {
         }
     }
 
+    /// Learn a Bayesian network structure from data using the specified algorithm ("hc", "ges", "pc", "fci").
     #[pyo3(signature = (data, method="hc"))]
     pub fn learn_structure(
         &self,

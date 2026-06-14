@@ -9,30 +9,47 @@ use crate::core::{
 use super::scope::Scope;
 use super::utils::{multi_index_from_flat, project_indices, log_sum_exp};
 
+/// Trait representing a factor in a probabilistic graphical model.
 pub trait Factor {
+    /// Returns the scope of the factor.
     fn scope(&self) -> &Scope;
+    /// Evaluates the factor at the given full assignment, returning the probability.
     fn evaluate(&self, assignment: &Assignment) -> LutufiResult<f64>;
+    /// Marginalizes the factor by summing out the specified variables.
     fn marginalize(&self, variables: &[VariableId]) -> LutufiResult<Box<dyn Factor>>;
+    /// Multiplies this factor with another factor.
     fn multiply(&self, other: &dyn Factor) -> LutufiResult<Box<dyn Factor>>;
+    /// Fixes variables to their assigned values and returns a reduced factor.
     fn reduce(&self, assignment: &Assignment) -> LutufiResult<Box<dyn Factor>>;
+    /// Normalizes the factor in-place so its entries sum to 1.
     fn normalize(&mut self);
+    /// Returns the log-value at the given flat index.
     fn log_value_at(&self, index: usize) -> f64;
+    /// Downcasts to `Any` for dynamic dispatch support.
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// A factor stored as a table of log-probabilities, either dense or sparse.
 pub enum TabularFactor {
+    /// Dense storage: a vector of log-probabilities for every assignment.
     Dense {
+        /// The scope (variables) of this dense factor.
         scope: Scope,
+        /// Log-probability values for every assignment in row-major order.
         log_table: Vec<f64>,
     },
+    /// Sparse storage: a map from flat index to log-probability for non-zero entries.
     Sparse {
+        /// The scope (variables) of this sparse factor.
         scope: Scope,
+        /// Log-probabilities for non-zero entries, keyed by flat index.
         log_entries: HashMap<usize, f64>,
     },
 }
 
 impl TabularFactor {
+    /// Creates a `TabularFactor` from probability values, automatically choosing dense or sparse storage.
     pub fn from_values(scope: Scope, values: Vec<f64>) -> LutufiResult<Self> {
         if values.len() != scope.num_entries() {
             return Err(LutufiError::CptWrongShape {
@@ -59,11 +76,13 @@ impl TabularFactor {
         }
     }
 
+    /// Creates an identity factor (all ones, i.e. log-value 0) over the given scope.
     pub fn identity(scope: Scope) -> LutufiResult<Self> {
         let log_table = vec![0.0; scope.num_entries()];
         Ok(TabularFactor::Dense { scope, log_table })
     }
 
+    /// Creates a dense `TabularFactor` directly from log-probability values.
     pub fn from_log_values(scope: Scope, log_values: Vec<f64>) -> LutufiResult<Self> {
         if log_values.len() != scope.num_entries() {
             return Err(LutufiError::CptWrongShape {
@@ -75,6 +94,7 @@ impl TabularFactor {
         Ok(TabularFactor::Dense { scope, log_table: log_values })
     }
 
+    /// Returns the log-probability at the given flat index.
     pub fn log_value_at(&self, index: usize) -> f64 {
         match self {
             TabularFactor::Dense { log_table, .. } => log_table[index],
@@ -82,10 +102,12 @@ impl TabularFactor {
         }
     }
 
+    /// Returns the probability at the given flat index.
     pub fn value_at(&self, index: usize) -> f64 {
         self.log_value_at(index).exp()
     }
 
+    /// Returns the log-probability at the given assignment.
     pub fn log_value_at_assignment(&self, assignment: &Assignment) -> LutufiResult<f64> {
         let scope = self.scope();
         let mut flat_idx = 0;
@@ -101,6 +123,7 @@ impl TabularFactor {
         Ok(self.log_value_at(flat_idx))
     }
 
+    /// Returns a reference to the factor's scope.
     pub fn scope(&self) -> &Scope {
         match self {
             TabularFactor::Dense { scope, .. } => scope,
@@ -108,10 +131,12 @@ impl TabularFactor {
         }
     }
 
+    /// Multiplies this factor with another `TabularFactor` using the configured backend.
     pub fn multiply(&self, other: &TabularFactor) -> LutufiResult<TabularFactor> {
         get_backend().multiply(self, other)
     }
 
+    /// Computes the product of two factors without using the backend.
     pub fn multiply_internal(&self, other: &TabularFactor) -> LutufiResult<TabularFactor> {
         let self_scope = self.scope();
         let other_scope = other.scope();
@@ -148,10 +173,12 @@ impl TabularFactor {
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
     }
 
+    /// Marginalizes variables using the configured backend.
     pub fn marginalize(&self, variables: &[VariableId]) -> LutufiResult<TabularFactor> {
         get_backend().marginalize(self, variables)
     }
 
+    /// Marginalizes variables without using the backend.
     pub fn marginalize_internal(&self, variables: &[VariableId]) -> LutufiResult<TabularFactor> {
         let current_scope = self.scope();
         let target_set: std::collections::HashSet<_> = variables.iter().collect();
@@ -182,6 +209,7 @@ impl TabularFactor {
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
     }
 
+    /// Max-marginalizes the factor by taking the max over the specified variables.
     pub fn max_marginalize(&self, variables: &[VariableId]) -> LutufiResult<TabularFactor> {
         let current_scope = self.scope();
         let target_set: std::collections::HashSet<_> = variables.iter().collect();
@@ -212,6 +240,7 @@ impl TabularFactor {
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
     }
 
+    /// Fixes variables to their assigned values and returns a reduced factor.
     pub fn reduce(&self, assignment: &Assignment) -> LutufiResult<TabularFactor> {
         let current_scope = self.scope();
         let mut remaining_vars = Vec::new();
@@ -262,10 +291,12 @@ impl TabularFactor {
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
     }
 
+    /// Normalizes the factor in-place using the configured backend.
     pub fn normalize(&mut self) {
         get_backend().normalize(self);
     }
 
+    /// Normalizes the factor in-place without using the backend.
     pub fn normalize_internal(&mut self) {
         match self {
             TabularFactor::Dense { log_table, .. } => {
@@ -381,14 +412,17 @@ impl Factor for TabularFactor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// A factor representing a potential function (an unnormalized factor).
 pub struct PotentialFunction {
     factor: TabularFactor,
 }
 
 impl PotentialFunction {
+    /// Creates a new `PotentialFunction` with the given scope and probability values.
     pub fn new(scope: Scope, values: Vec<f64>) -> LutufiResult<Self> {
         Ok(PotentialFunction { factor: TabularFactor::from_values(scope, values)? })
     }
 
+    /// Returns a reference to the underlying `TabularFactor`.
     pub fn as_factor(&self) -> &TabularFactor { &self.factor }
 }

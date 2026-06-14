@@ -15,35 +15,53 @@ use crate::core::{
 };
 use crate::ffi::models::PyBayesianNetwork;
 
+/// Exact inference using variable elimination.
+///
+/// Computes marginal posteriors by summing out variables one by one.
 #[pyclass(name = "_RustVariableEliminationEngine")]
 pub struct PyVariableEliminationEngine {}
 
+/// Exact inference using the junction tree (clique tree) algorithm.
+///
+/// Converts the network into a tree of cliques for efficient inference.
 #[pyclass(name = "_RustJunctionTreeEngine")]
 pub struct PyJunctionTreeEngine {
     engine: Option<JunctionTreeEngine>,
 }
 
+/// Approximate inference using loopy belief propagation.
+///
+/// Iterative message-passing on a factor graph (may not converge on loopy graphs).
 #[pyclass(name = "_RustLBPEngine")]
 pub struct PyLBPEngine {}
 
+/// Approximate inference using Markov chain Monte Carlo sampling.
+///
+/// Draws samples from the posterior distribution using Gibbs sampling.
 #[pyclass(name = "_RustMCMCEngine")]
 pub struct PyMCMCEngine {}
 
+/// Approximate inference using variational methods (mean-field).
+///
+/// Optimizes a variational distribution to approximate the true posterior.
 #[pyclass(name = "_RustVariationalEngine")]
 pub struct PyVariationalEngine {}
 
 #[pymethods]
 impl PyJunctionTreeEngine {
+    /// Create a new junction tree engine from a Bayesian network.
     #[new]
     pub fn new(model: &PyBayesianNetwork) -> PyResult<Self> {
         let engine = JunctionTreeEngine::new(&model.inner).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyJunctionTreeEngine { engine: Some(engine) })
     }
 
+    /// Return the treewidth of the junction tree.
     pub fn treewidth(&self) -> PyResult<usize> {
         self.engine.as_ref().map(|engine| engine.treewidth()).ok_or_else(|| PyValueError::new_err("Engine not initialized"))
     }
 
+    /// Compute marginal posteriors for query variables given evidence.
     #[pyo3(signature = (variables, evidence=None))]
     pub fn query(
         &self,
@@ -121,11 +139,13 @@ impl PyVariableEliminationEngine {
 
 #[pymethods]
 impl PyVariableEliminationEngine {
+    /// Create a new variable elimination engine.
     #[new]
     pub fn new() -> Self {
         PyVariableEliminationEngine {}
     }
 
+    /// Compute marginal posteriors using variable elimination.
     #[pyo3(signature = (model, variables, evidence, heuristic=None))]
     pub fn query(
         &self,
@@ -154,6 +174,7 @@ impl PyVariableEliminationEngine {
         Ok(Self::pack_result(py, &model.inner, result_factor))
     }
 
+    /// Compute MAP / MPE estimate using variable elimination.
     #[pyo3(signature = (model, variables, evidence, heuristic=None, mode="map"))]
     pub fn query_map(
         &self,
@@ -189,8 +210,10 @@ impl PyVariableEliminationEngine {
 
 #[pymethods]
 impl PyLBPEngine {
+    /// Create a new loopy belief propagation engine.
     #[new] pub fn new() -> Self { PyLBPEngine {} }
 
+    /// Run loopy belief propagation to compute approximate marginals.
     #[pyo3(signature = (model, variables, evidence, max_iterations=1000, tolerance=1e-6, damping=0.5))]
     pub fn query(
         &self,
@@ -237,8 +260,10 @@ impl PyLBPEngine {
 
 #[pymethods]
 impl PyMCMCEngine {
+    /// Create a new MCMC sampling engine.
     #[new] pub fn new() -> Self { PyMCMCEngine {} }
 
+    /// Run MCMC sampling to compute approximate marginals.
     #[pyo3(signature = (model, variables, evidence, n_samples=1000, burn_in=100))]
     pub fn query(
         &self,
@@ -281,8 +306,10 @@ impl PyMCMCEngine {
 
 #[pymethods]
 impl PyVariationalEngine {
+    /// Create a new variational inference engine.
     #[new] pub fn new() -> Self { PyVariationalEngine {} }
 
+    /// Run mean-field variational inference to compute approximate marginals.
     #[pyo3(signature = (model, variables, evidence, max_iterations=100, tolerance=1e-4))]
     pub fn query(
         &self,

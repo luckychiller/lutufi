@@ -9,6 +9,7 @@ use super::migration::apply_migrations;
 use super::types::{LmfDocument, VerifyCheck, VerifyReport};
 
 impl LmfDocument {
+    /// Serializes this document to JSON and writes it to the given file path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> LutufiResult<()> {
         let json = serde_json::to_string_pretty(self).map_err(|e| {
             LutufiError::SerializationError {
@@ -23,6 +24,8 @@ impl LmfDocument {
         Ok(())
     }
 
+    /// Reads a JSON file from the given path and deserializes it into an
+    /// [`LmfDocument`], applying any required format migrations.
     pub fn load<P: AsRef<Path>>(path: P) -> LutufiResult<Self> {
         let json = std::fs::read_to_string(path.as_ref()).map_err(|e| {
             LutufiError::DeserializationError {
@@ -32,6 +35,8 @@ impl LmfDocument {
         Self::from_json(&json)
     }
 
+    /// Deserializes an [`LmfDocument`] from a JSON string, applying any
+    /// required format migrations and validating that variables are present.
     pub fn from_json(json: &str) -> LutufiResult<Self> {
         let doc: LmfDocument = serde_json::from_str(json).map_err(|e| {
             LutufiError::DeserializationError {
@@ -50,6 +55,9 @@ impl LmfDocument {
         Ok(doc)
     }
 
+    /// Runs inference on the given [`BayesianNetwork`] using the settings and
+    /// evidence stored in this document, then compares the results against the
+    /// expected marginals and log-likelihood recorded in the document.
     pub fn verify(&self, network: &BayesianNetwork) -> LutufiResult<VerifyReport> {
         let mut report = VerifyReport {
             passed: true,

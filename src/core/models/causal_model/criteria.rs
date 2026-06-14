@@ -5,6 +5,7 @@ use crate::core::variable::VariableId;
 use super::types::CausalModel;
 
 impl CausalModel {
+    /// Checks whether the set `z` satisfies the back-door criterion relative to `x` and `y`.
     pub fn satisfies_backdoor(&self, x: &str, y: &str, z: &[&str]) -> LutufiResult<bool> {
         let x_id = self.network.id_of(x)?;
         let descendants = self.network.graph.descendants(&x_id);
@@ -21,6 +22,7 @@ impl CausalModel {
         temp_network.d_separated(x, y, z)
     }
 
+    /// Checks whether the set `z` satisfies the front-door criterion relative to `x` and `y`.
     pub fn satisfies_frontdoor(&self, x: &str, y: &str, z: &[&str]) -> LutufiResult<bool> {
         let x_id = self.network.id_of(x)?;
         let y_id = self.network.id_of(y)?;
@@ -57,6 +59,8 @@ impl CausalModel {
         temp_net_z.d_separated(z[0], y, &[x])
     }
 
+    /// Computes the front-door adjustment estimate of the causal effect of `treatment` on `outcome`
+    /// mediated by `mediator`, assuming the front-door criterion is satisfied.
     pub fn frontdoor_adjustment(
         &self,
         treatment: &str,

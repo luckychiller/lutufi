@@ -1,6 +1,7 @@
 use crate::core::error::{LutufiError, LutufiResult};
 use crate::core::variable::VariableId;
 
+/// Computes `log(exp(a) + exp(b))` in a numerically stable way.
 pub fn log_sum_exp(a: f64, b: f64) -> f64 {
     if a.is_infinite() && a.is_sign_negative() { return b; }
     if b.is_infinite() && b.is_sign_negative() { return a; }
@@ -8,6 +9,7 @@ pub fn log_sum_exp(a: f64, b: f64) -> f64 {
     max + ((a - max).exp() + (b - max).exp()).ln()
 }
 
+/// Converts a flat index into a multi-dimensional index given dimension sizes.
 pub fn multi_index_from_flat(flat: usize, sizes: &[usize]) -> Vec<usize> {
     let mut result = vec![0; sizes.len()];
     let mut remainder = flat;
@@ -18,6 +20,7 @@ pub fn multi_index_from_flat(flat: usize, sizes: &[usize]) -> Vec<usize> {
     result
 }
 
+/// Projects a multi-dimensional index from a full variable set onto a subset and returns the corresponding flat index.
 pub fn project_indices(
     full_indices: &[usize],
     full_vars: &[VariableId],

@@ -139,7 +139,7 @@ impl SparseCptStorage {
     }
 
     /// Attempt to return a CSR view (currently panics; use `to_csr_owned` instead).
-    pub fn to_csr(&self) -> CsMatView<f64> {
+    pub fn to_csr(&self) -> CsMatView<'_, f64> {
         unreachable!("Use to_csr_owned instead");
     }
 

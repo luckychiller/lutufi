@@ -11,6 +11,8 @@ use super::types::{
 };
 
 impl LmfDocument {
+    /// Converts a [`BayesianNetwork`] into an [`LmfDocument`] by extracting
+    /// variables, edges, and conditional probability tables.
     pub fn from_bayesian_network(network: &BayesianNetwork) -> LutufiResult<Self> {
         let variables = network.variables();
         let node_names: Vec<&str> = network.nodes();
@@ -104,6 +106,8 @@ impl LmfDocument {
         })
     }
 
+    /// Reconstructs a [`BayesianNetwork`] from this [`LmfDocument`] by
+    /// re-creating variables, edges, and CPDs from the LMF representation.
     pub fn to_bayesian_network(&self) -> LutufiResult<BayesianNetwork> {
         let mut network = BayesianNetwork::new();
 

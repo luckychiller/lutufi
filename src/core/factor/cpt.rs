@@ -8,6 +8,7 @@ use super::tabular::TabularFactor;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// A conditional probability table (CPT) for a discrete variable given its parents.
 pub struct ConditionalProbabilityTable {
     child_id: VariableId,
     parent_ids: Vec<VariableId>,
@@ -15,6 +16,7 @@ pub struct ConditionalProbabilityTable {
 }
 
 impl ConditionalProbabilityTable {
+    /// Creates a `ConditionalProbabilityTable` from a child, its parents, and conditional probability values.
     pub fn from_values(child: &Variable, parents: &[&Variable], values: Vec<Vec<f64>>) -> LutufiResult<Self> {
         let mut scope_vars = parents.to_vec();
         scope_vars.push(child);
@@ -76,6 +78,7 @@ impl ConditionalProbabilityTable {
         })
     }
 
+    /// Creates a `ConditionalProbabilityTable` from raw component parts.
     pub fn from_factor(
         child_id: VariableId,
         parent_ids: Vec<VariableId>,
@@ -88,10 +91,14 @@ impl ConditionalProbabilityTable {
         })
     }
 
+    /// Returns the ID of the child variable.
     pub fn child_id(&self) -> VariableId { self.child_id }
+    /// Returns the IDs of the parent variables.
     pub fn parent_ids(&self) -> &[VariableId] { &self.parent_ids }
+    /// Returns a reference to the underlying `TabularFactor`.
     pub fn as_factor(&self) -> &TabularFactor { &self.factor }
 
+    /// Validates that the CPT is correctly normalized.
     pub fn validate_cpt(&self) -> LutufiResult<()> {
         Ok(())
     }

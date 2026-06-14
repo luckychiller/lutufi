@@ -4,10 +4,15 @@
 
 use pyo3::prelude::*;
 
+/// Variable type for probabilistic graphical models.
 pub mod variable;
+/// Domain types (discrete, binary, continuous) for variables.
 pub mod domain;
+/// Model types: BayesianNetwork, MarkovRandomField, DynamicBayesianNetwork.
 pub mod models;
+/// Inference engines: variable elimination, junction tree, LBP, MCMC, variational.
 pub mod inference;
+/// Parameter and structure learning algorithms.
 pub mod learning;
 
 /// Register all Python-exposed types and functions.

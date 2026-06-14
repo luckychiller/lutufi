@@ -3,9 +3,13 @@ use crate::core::error::LutufiResult;
 use crate::core::models::bayesian_network::BayesianNetwork;
 use super::types::EdgeOrientation;
 
+/// Builds a [`BayesianNetwork`] from oriented edges produced by constraint-based
+/// structure learning.
 pub struct ConstrainedNetworkBuilder;
 
 impl ConstrainedNetworkBuilder {
+    /// Constructs a [`BayesianNetwork`] by adding variables with their domain
+    /// states from the data, then adding edges according to the given orientations.
     pub fn build(
         node_names: &[String],
         orientations: &HashMap<(String, String), EdgeOrientation>,

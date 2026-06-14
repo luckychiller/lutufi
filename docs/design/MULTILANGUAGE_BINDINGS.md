@@ -1137,7 +1137,7 @@ Integration tests verify end-to-end workflows:
 
 Continuous integration tests bindings across Python versions:
 
-**Version Matrix:** Tests run on Python 3.8, 3.9, 3.10, 3.11, and 3.12.
+**Version Matrix:** Tests run on Python 3.9, 3.10, 3.11, and 3.12.
 
 **Platform Matrix:** Tests run on Linux, macOS, and Windows.
 

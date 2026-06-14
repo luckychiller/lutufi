@@ -21,7 +21,7 @@ This dual representation enables rigorous reasoning under uncertainty over the r
 Lutufi's core is implemented in **Rust** for performance and safety, with **Python** as the primary user-facing interface.
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.9+
 - Rust toolchain (cargo)
 - `maturin` (for building Python bindings)
 

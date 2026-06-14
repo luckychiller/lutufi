@@ -9,15 +9,24 @@ use super::orientation::VStructureOrientator;
 use super::meeks::MeeksRuleApplier;
 use super::network::ConstrainedNetworkBuilder;
 
+/// Runs constraint-based causal structure learning algorithms (PC, FCI).
+///
+/// Uses conditional independence tests to discover the structure of a
+/// Bayesian network from observational data.
 pub struct ConstraintBasedLearner {
     pub(crate) options: ConstraintBasedOptions,
 }
 
 impl ConstraintBasedLearner {
+    /// Creates a new learner with the given configuration options.
     pub fn new(options: ConstraintBasedOptions) -> Self {
         Self { options }
     }
 
+    /// Runs the PC (Peter–Clark) algorithm to learn a Bayesian network.
+    ///
+    /// Steps: skeleton discovery, v-structure orientation, Meek's rule
+    /// propagation, then network construction.
     pub fn pc_algorithm(
         &self,
         data: &[HashMap<String, String>],
@@ -39,6 +48,11 @@ impl ConstraintBasedLearner {
         ConstrainedNetworkBuilder::build(&node_names, &orientations, data)
     }
 
+    /// Runs the FCI (Fast Causal Inference) algorithm to learn a Partial
+    /// Ancestral Graph (PAG) and a derived Bayesian network.
+    ///
+    /// Steps: FCI skeleton discovery, v-structure orientation in a PAG, rule
+    /// application, then network construction.
     pub fn fci_algorithm(
         &self,
         data: &[HashMap<String, String>],

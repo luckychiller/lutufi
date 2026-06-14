@@ -1,6 +1,8 @@
 use crate::core::error::{LutufiError, LutufiResult};
 use super::types::{LmfDocument, LMF_CURRENT_VERSION};
 
+/// Migrates an [`LmfDocument`] from an older format version to the current
+/// version, returning an error if the document version is too old or too new.
 pub fn apply_migrations(mut doc: LmfDocument) -> LutufiResult<LmfDocument> {
     match doc.format_version.as_str() {
         "0.9.0" | "0.9.1" | "0.9.2" => {

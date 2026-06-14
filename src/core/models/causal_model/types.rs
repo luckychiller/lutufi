@@ -4,13 +4,17 @@ use crate::core::error::{LutufiError, LutufiResult};
 use crate::core::models::bayesian_network::BayesianNetwork;
 use crate::core::variable::VariableId;
 
+/// A causal graphical model consisting of a Bayesian network augmented with bidirected edges
+/// representing unobserved confounders.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CausalModel {
+    /// The underlying Bayesian network structure and parameters.
     pub network: BayesianNetwork,
     bidirected_edges: HashSet<(VariableId, VariableId)>,
 }
 
 impl CausalModel {
+    /// Creates a new causal model by marking the given Bayesian network as causal.
     pub fn new(mut network: BayesianNetwork) -> Self {
         network.mark_as_causal();
         CausalModel {
@@ -19,6 +23,7 @@ impl CausalModel {
         }
     }
 
+    /// Ensures the model is causal, returning a `NonCausalModel` error otherwise.
     pub fn ensure_causal(&self, operation: &str) -> LutufiResult<()> {
         if !self.network.is_causal() {
             Err(LutufiError::NonCausalModel {
@@ -30,6 +35,7 @@ impl CausalModel {
         }
     }
 
+    /// Marks a hidden confounder between two variables by adding a bidirected edge.
     pub fn mark_hidden_confounder(&mut self, var1: &str, var2: &str) -> LutufiResult<()> {
         let id1 = self.network.id_of(var1)?;
         let id2 = self.network.id_of(var2)?;
@@ -38,25 +44,35 @@ impl CausalModel {
         Ok(())
     }
 
+    /// Returns the set of bidirected edges representing hidden confounders.
     pub fn bidirected_edges(&self) -> &HashSet<(VariableId, VariableId)> {
         &self.bidirected_edges
     }
 }
 
+/// The result of an identification query.
 #[derive(Debug, Clone)]
 pub enum IdentificationResult {
+    /// The causal effect is identifiable and has a formula.
     Identifiable(IdentificationFormula),
+    /// The causal effect is not identifiable, with a reason string.
     NotIdentifiable(String),
 }
 
+/// A formula representing an identified causal effect.
 #[derive(Debug, Clone)]
 pub struct IdentificationFormula {
+    /// The string representation of the identification formula.
     pub formula: String,
+    /// The target variables of the causal query.
     pub targets: Vec<String>,
+    /// The intervention variables of the causal query.
     pub interventions: Vec<String>,
 }
 
 impl IdentificationFormula {
+    /// Evaluates the identification formula on the given model, returning marginal probabilities
+    /// for each target variable given the specified outcome value.
     pub fn evaluate(
         &self,
         model: &CausalModel,

@@ -1403,7 +1403,7 @@ version = "0.1.0"
 description = "Unified Bayesian networks and network analysis"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -1434,7 +1434,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python: ['3.9', '3.9', '3.10', '3.11', '3.12']
     
     steps:
       - uses: actions/checkout@v3

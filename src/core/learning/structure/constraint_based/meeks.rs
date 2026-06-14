@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use super::types::{EdgeOrientation, SkeletonResult};
 
+/// Applies Meek's orientation propagation rules to extend a partial orientation
+/// into a maximally oriented graph.
 pub struct MeeksRuleApplier;
 
 impl MeeksRuleApplier {
+    /// Iteratively applies Meek's rules (R1–R4) to orient additional edges
+    /// until no further orientations can be inferred.
     pub fn apply(
         orientations: &mut HashMap<(String, String), EdgeOrientation>,
         skeleton: &SkeletonResult,

@@ -4,6 +4,8 @@ use crate::core::variable::VariableId;
 use super::types::{CausalModel, IdentificationResult, IdentificationFormula, IdResult};
 
 impl CausalModel {
+    /// Identifies the causal effect `P(targets | do(interventions))` using back-door, front-door,
+    /// and recursive ID algorithms.
     pub fn identify(&self, targets: &[&str], interventions: &[&str]) -> LutufiResult<IdentificationResult> {
         self.ensure_causal("identify")?;
         if targets.is_empty() || interventions.is_empty() {
@@ -70,6 +72,7 @@ impl CausalModel {
         }
     }
 
+    /// Identifies the conditional causal effect `P(targets | conditions, do(interventions))`.
     pub fn identify_conditional(
         &self,
         targets: &[&str],
@@ -102,6 +105,7 @@ impl CausalModel {
         }
     }
 
+    /// Computes the C-components (connected components via bidirected edges) of the full graph.
     pub fn c_components(&self) -> Vec<HashSet<VariableId>> {
         let mut components = Vec::new();
         let mut unvisited: HashSet<VariableId> = self.network.variables().keys().copied().collect();
@@ -123,6 +127,7 @@ impl CausalModel {
         components
     }
 
+    /// Computes C-components in a subgraph where outgoing edges from variables in `remove_outgoing` are removed.
     pub fn c_components_in_subgraph(&self, remove_outgoing: &HashSet<VariableId>) -> Vec<HashSet<VariableId>> {
         let mut components = Vec::new();
         let mut unvisited: HashSet<VariableId> = self.network.variables().keys().copied().collect();

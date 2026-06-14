@@ -9,7 +9,7 @@ disappeared.
 
 They are intentionally implemented with light regex parsing rather than a
 TOML library, since ``tomllib`` is only available on Python >= 3.11 and this
-project supports Python >= 3.8.
+project supports Python >= 3.9.
 """
 
 import re

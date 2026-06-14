@@ -2,15 +2,20 @@ use std::collections::{HashMap, HashSet};
 use crate::core::error::LutufiResult;
 use super::types::SkeletonResult;
 
+/// Discovers the undirected skeleton of a causal graph using conditional
+/// independence tests (PC algorithm skeleton phase).
 pub struct SkeletonDiscovery {
     alpha: f64,
 }
 
 impl SkeletonDiscovery {
+    /// Creates a new skeleton discovery with the given significance level `alpha`.
     pub fn new(alpha: f64) -> Self {
         Self { alpha }
     }
 
+    /// Runs the skeleton discovery algorithm on categorical data, returning
+    /// the undirected adjacency graph and separation sets.
     pub fn discover(
         &self,
         data: &[HashMap<String, String>],

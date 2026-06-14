@@ -64,6 +64,7 @@ impl PyDomain {
         self.inner.contains(value)
     }
 
+    /// Return a string representation of this Domain.
     pub fn __repr__(&self) -> String {
         match &self.inner {
             Domain::Discrete { states } => format!("Domain.discrete({:?})", states),
@@ -74,6 +75,7 @@ impl PyDomain {
         }
     }
 
+    /// Return a human-readable string for this Domain.
     pub fn __str__(&self) -> String {
         self.__repr__()
     }

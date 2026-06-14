@@ -4,6 +4,8 @@ use crate::core::models::bayesian_network::BayesianNetwork;
 use super::types::CausalModel;
 
 impl CausalModel {
+    /// Applies the do-operator by mutilating the graph (removing incoming edges to intervened nodes)
+    /// and fixing their values, returning the interventional Bayesian network.
     pub fn do_operator(&self, intervention: &Assignment) -> LutufiResult<BayesianNetwork> {
         self.ensure_causal("do_operator")?;
         let mut mutilated = self.network.clone();
@@ -40,6 +42,7 @@ impl CausalModel {
         Ok(mutilated)
     }
 
+    /// Performs a causal query by applying the do-operator and then querying the mutilated network.
     pub fn causal_query(
         &self,
         targets: &[&str],
@@ -50,6 +53,7 @@ impl CausalModel {
         mutilated.query(targets, &Assignment::new(), crate::core::inference::Algorithm::Auto)
     }
 
+    /// Computes a counterfactual query: given observed evidence, applies an intervention and queries.
     pub fn counterfactual(
         &self,
         observed: &Assignment,
@@ -61,6 +65,8 @@ impl CausalModel {
         mutilated.query(query, observed, crate::core::inference::Algorithm::Auto)
     }
 
+    /// Computes the probability of necessity (PN): the probability that the outcome would not have occurred
+    /// had the treatment been absent, given that it did occur under the actual treatment.
     pub fn probability_of_necessity(
         &self,
         outcome: &str,
@@ -104,6 +110,8 @@ impl CausalModel {
         Ok(pn.max(0.0).min(1.0))
     }
 
+    /// Computes the probability of sufficiency (PS): the probability that the outcome would have occurred
+    /// had the treatment been present, given that it did not occur under the reference condition.
     pub fn probability_of_sufficiency(
         &self,
         outcome: &str,

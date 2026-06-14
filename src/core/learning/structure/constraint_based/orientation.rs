@@ -2,9 +2,14 @@ use std::collections::HashMap;
 use crate::core::error::LutufiResult;
 use super::types::{EdgeOrientation, SkeletonResult, VStructureResult};
 
+/// Orients v-structures (colliders) in an undirected skeleton using
+/// separation-set information.
 pub struct VStructureOrientator;
 
 impl VStructureOrientator {
+    /// Detects and orients colliders: for every triple `(u, z, v)` where `u` and
+    /// `v` are non-adjacent but both adjacent to `z`, and `z` is not in the
+    /// separation set of `(u, v)`, edges are oriented `u -> z <- v`.
     pub fn orient(
         skeleton: &SkeletonResult,
         node_names: &[String],

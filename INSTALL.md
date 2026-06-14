@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- **Python** 3.8 or later (3.11+ recommended)
+- **Python** 3.9 or later (3.11+ recommended)
 - **Rust toolchain** 1.70 or later — [Install Rust](https://rustup.rs/)
 - **maturin** — `pip install maturin`
 

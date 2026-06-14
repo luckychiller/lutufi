@@ -17,6 +17,7 @@ pub struct PyVariable {
 
 #[pymethods]
 impl PyVariable {
+    /// Create a new Variable with the given name and discrete domain states.
     #[new]
     #[pyo3(signature = (name, domain))]
     pub fn new(name: &str, domain: Vec<String>) -> PyResult<Self> {
@@ -39,6 +40,7 @@ impl PyVariable {
         PyDomain { inner: self.inner.domain().clone() }
     }
 
+    /// Return a string representation of this Variable.
     pub fn __repr__(&self) -> String {
         format!(
             "Variable({:?}, domain={:?})",
@@ -47,6 +49,7 @@ impl PyVariable {
         )
     }
 
+    /// Return a human-readable string for this Variable.
     pub fn __str__(&self) -> String {
         self.__repr__()
     }
