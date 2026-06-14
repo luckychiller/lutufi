@@ -143,19 +143,17 @@ fn main() -> LutufiResult<()> {
 
             let vars: Vec<&str> = variable.split(',').map(|s| s.trim()).collect();
 
-            let evidence = doc
-                .evidence
-                .as_ref()
-                .map(|ev| {
+            let evidence = match doc.evidence.as_ref() {
+                Some(ev) => {
                     let mut assign = lutufi_core::core::assignment::Assignment::new();
                     for (var, val) in &ev.assignments {
-                        if let Ok(vid) = network.id_of(var) {
-                            assign.set(vid, val.as_str());
-                        }
+                        let vid = network.id_of(var)?;
+                        assign.set(vid, val.as_str());
                     }
                     assign
-                })
-                .unwrap_or_default();
+                }
+                None => lutufi_core::core::assignment::Assignment::new(),
+            };
 
             let algorithm = doc
                 .inference_settings

@@ -1,0 +1,8 @@
+include Cargo.toml
+include Cargo.lock
+include pyproject.toml
+include README.md
+include LICENSE
+recursive-include src *.rs
+recursive-include bindings *.rs
+recursive-include bindings/python/lutufi *.py *.pyi py.typed

@@ -67,11 +67,7 @@ impl PyStructureLearner {
         method: &str,
     ) -> PyResult<PyBayesianNetwork> {
         let build_py_bn = |bn: crate::core::models::bayesian_network::BayesianNetwork| -> PyBayesianNetwork {
-            let mut registry = std::collections::HashMap::new();
-            for (_, var) in bn.variables() {
-                registry.insert(var.name().to_string(), var.clone());
-            }
-            PyBayesianNetwork { inner: bn, variable_registry: registry }
+            PyBayesianNetwork { inner: bn }
         };
 
         match method {
@@ -91,9 +87,9 @@ impl PyStructureLearner {
                 Ok(build_py_bn(bn))
             },
             "fci" => {
-                let bn = self.constraint_based.fci_algorithm(&data)
+                let result = self.constraint_based.fci_algorithm(&data)
                     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-                Ok(build_py_bn(bn))
+                Ok(build_py_bn(result.network))
             },
             _ => Err(PyValueError::new_err("Invalid structure learning method")),
         }

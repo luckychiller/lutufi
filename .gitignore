@@ -1,10 +1,13 @@
 
 
 # Rust
+# Cargo.lock is committed: this crate builds binaries ([[bin]] lutufi,
+# benchmark_baseline), so the lockfile should be tracked for reproducible builds.
 /target/
-Cargo.lock
 **/*.rs.bk
 *.pdb
+
+**/research/
 
 # Python
 __pycache__/
@@ -91,3 +94,6 @@ perf.data*
 
 # Benchmark results
 benches/results/
+
+# Generated example output (plots, etc.)
+examples/output/

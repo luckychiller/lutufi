@@ -308,7 +308,7 @@ impl XmlBifFormat {
             let mut matrix = vec![vec![0.0f64; child_domain_size]; parent_card];
             for pc in 0..parent_card {
                 for cs in 0..child_domain_size {
-                    let idx = cs * parent_card + pc;
+                    let idx = pc * child_domain_size + cs;
                     if idx < table.len() {
                         matrix[pc][cs] = table[idx];
                     }

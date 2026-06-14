@@ -114,11 +114,13 @@ class TestNetworkXRoundTrip:
         G = mrf.to_networkx()
         assert isinstance(G, nx.Graph)
         assert set(G.nodes()) == {"A", "B", "C"}
-        assert set(G.edges()) == {("A", "B"), ("B", "C")}
+        # Edge endpoint order is not meaningful for an undirected graph,
+        # so compare as unordered pairs.
+        assert {frozenset(e) for e in G.edges()} == {frozenset(("A", "B")), frozenset(("B", "C"))}
 
         recovered = MarkovRandomField.from_networkx(G)
         assert set(recovered.nodes()) == set(mrf.nodes())
-        assert set(recovered.edges()) == set(mrf.edges())
+        assert {frozenset(e) for e in recovered.edges()} == {frozenset(e) for e in mrf.edges()}
 
     def test_bayesian_network_from_networkx_with_domains(self):
         """from_networkx reads node attributes for domains."""

@@ -38,6 +38,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(feature = "python")]
 #[pymodule]
 fn _lutufi(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("__version__", VERSION)?;
     ffi::register(m)
 }
 
@@ -47,6 +48,6 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert_eq!(VERSION, "0.1.0");
+        assert_eq!(VERSION, "1.0.0");
     }
 }

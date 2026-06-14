@@ -28,7 +28,6 @@ impl PyValidationResult {
 #[pyclass(name = "_RustBayesianNetwork")]
 pub struct PyBayesianNetwork {
     pub(crate) inner: BayesianNetwork,
-    pub(crate) variable_registry: HashMap<String, Variable>,
 }
 
 #[pymethods]
@@ -37,14 +36,11 @@ impl PyBayesianNetwork {
     pub fn new() -> Self {
         PyBayesianNetwork {
             inner: BayesianNetwork::new(),
-            variable_registry: HashMap::new(),
         }
     }
 
     pub fn add_variable(&mut self, name: &str, domain: Vec<String>) -> PyResult<()> {
         let d = Domain::discrete(domain).map_err(|e| PyValueError::new_err(e.to_string()))?;
-        let var = Variable::new(name, d.clone());
-        self.variable_registry.insert(name.to_string(), var);
         self.inner.add_variable(name, d).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(())
     }
@@ -59,7 +55,7 @@ impl PyBayesianNetwork {
 
     pub fn set_cpd(&mut self, variable_name: &str, values: &Bound<'_, PyAny>) -> PyResult<()> {
         let normalized = self.normalize_cpd_input(variable_name, values)?;
-        let child = self.variable_registry.get(variable_name).ok_or_else(|| PyValueError::new_err(format!("Var {} not found", variable_name)))?.clone();
+        let child = self.inner.variable(variable_name).map_err(|e| PyValueError::new_err(e.to_string()))?.clone();
         let parent_vars = self.collect_parent_variables(variable_name)?;
         let parent_refs: Vec<&Variable> = parent_vars.iter().collect();
         let cpd = ConditionalProbabilityTable::from_values(&child, &parent_refs, normalized).map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -104,6 +100,14 @@ impl PyBayesianNetwork {
         }
     }
     pub fn is_causal(&self) -> bool { self.inner.is_causal() }
+
+    pub fn __copy__(&self) -> Self {
+        PyBayesianNetwork { inner: self.inner.clone() }
+    }
+
+    pub fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        PyBayesianNetwork { inner: self.inner.clone() }
+    }
 }
 
 impl PyBayesianNetwork {

@@ -5,7 +5,7 @@ use crate::core::{
 };
 use super::scope::Scope;
 use super::tabular::TabularFactor;
-use super::utils::{multi_index_from_flat, project_indices};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConditionalProbabilityTable {
@@ -39,49 +39,35 @@ impl ConditionalProbabilityTable {
             });
         }
 
-        for i in 0..num_rows {
+        // `values` is given as one row per child state and one column per
+        // parent configuration, so each *column* (a conditional distribution
+        // over the child's states for a fixed parent configuration) must sum
+        // to 1.
+        for j in 0..num_cols {
             let mut sum = 0.0;
-            for j in 0..num_cols {
+            for i in 0..num_rows {
                 sum += values[i][j];
             }
             if (sum - 1.0).abs() > 1e-6 {
                 return Err(LutufiError::CptDoesNotNormalize {
                     variable: child.name().to_string(),
-                    parent_config: format!("index {}", i),
+                    parent_config: format!("index {}", j),
                     actual_sum: sum,
                 });
             }
         }
 
-        let mut flat_values = Vec::with_capacity(num_rows * num_cols);
+        // The factor's flat layout places the child as the fastest-varying
+        // (innermost) dimension and the parents as slower-varying dimensions,
+        // in `parents` order. So flat index = parent_config * num_rows + child_state.
+        let mut flat_values = vec![0.0; num_rows * num_cols];
         for i in 0..num_rows {
             for j in 0..num_cols {
-                flat_values.push(values[i][j]);
+                flat_values[j * num_rows + i] = values[i][j];
             }
         }
 
-        let original_vars: Vec<VariableId> = scope_vars.iter().map(|v| v.id()).collect();
-        let original_sizes: Vec<usize> = scope_vars.iter().map(|v| v.domain().size().unwrap_or(0)).collect();
-        let original_scope = Scope { variables: original_vars, sizes: original_sizes };
-
-        let reordered_values = if original_scope.variable_ids() == scope.variable_ids() {
-            flat_values
-        } else {
-            let mut reordered = vec![0.0; flat_values.len()];
-            for i in 0..scope.num_entries() {
-                let sorted_indices = multi_index_from_flat(i, scope.sizes());
-                let original_index = project_indices(
-                    &sorted_indices,
-                    scope.variable_ids(),
-                    original_scope.variable_ids(),
-                    original_scope.sizes(),
-                )?;
-                reordered[i] = flat_values[original_index];
-            }
-            reordered
-        };
-
-        let factor = TabularFactor::from_values(scope, reordered_values)?;
+        let factor = TabularFactor::from_values(scope, flat_values)?;
 
         Ok(ConditionalProbabilityTable {
             child_id: child.id(),

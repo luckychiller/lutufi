@@ -12,7 +12,7 @@
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/lutufi/lutufi.git
+git clone https://github.com/luckychiller/lutufi.git
 cd lutufi
 
 # 2. (Recommended) Create a virtual environment
@@ -127,4 +127,4 @@ A successful installation should show all tests passing.
 
 ---
 
-*For questions or issues, see: [github.com/lutufi/lutufi/issues](https://github.com/lutufi/lutufi/issues)*
+*For questions or issues, see: [github.com/luckychiller/lutufi/issues](https://github.com/luckychiller/lutufi/issues)*

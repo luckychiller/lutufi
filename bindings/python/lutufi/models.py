@@ -39,8 +39,13 @@ except ImportError:
 
 # ─── Error Classes ────────────────────────────────────────────────────────────
 
-class LutufiError(Exception):
-    """Base class for all Lutufi errors raised from the Python layer."""
+class LutufiError(ValueError):
+    """Base class for all Lutufi errors raised from the Python layer.
+
+    Subclasses ``ValueError`` so that existing ``except ValueError`` call
+    sites continue to work even as specific operations start raising the
+    more informative subclasses below.
+    """
     pass
 
 
@@ -248,6 +253,67 @@ class LutufiHighTreewidthWarning(UserWarning):
     pass
 
 
+# ─── Rust Error Translation ────────────────────────────────────────────────
+#
+# The Rust core (src/core/error.rs) defines a rich `LutufiError` enum, but
+# the PyO3 bindings currently surface every variant as a generic
+# `ValueError` (via `PyValueError::new_err(e.to_string())`). The message
+# text still follows the enum's `#[error("...")]` templates, so we can
+# recognize those templates here and re-raise the matching
+# `LutufiXxxError` subclass, giving callers a catchable, documented
+# exception type without requiring changes to the compiled extension.
+
+import re as _re
+
+_CYCLE_RE = _re.compile(
+    r"^Adding edge (.+?) -> (.+?) would create a cycle: (.*)$", _re.DOTALL
+)
+_RESOURCE_LIMIT_RE = _re.compile(
+    r"^Resource limit exceeded: (\S+) \(limit: (.+?), requested: (.+?)\)\.\s*(.*)$",
+    _re.DOTALL,
+)
+
+
+def _translate_error(exc: ValueError) -> Exception:
+    """Translate a generic ``ValueError`` from the Rust core into the
+    matching ``LutufiError`` subclass, based on its message text.
+
+    Returns `exc` unchanged if the message doesn't match a known
+    `LutufiError` template (e.g. errors that don't yet have a dedicated
+    Python exception class).
+    """
+    msg = str(exc)
+
+    m = _CYCLE_RE.match(msg)
+    if m:
+        from_node, to_node, cycle = m.groups()
+        return LutufiCyclicGraphError(from_node, to_node, cycle)
+
+    m = _RESOURCE_LIMIT_RE.match(msg)
+    if m:
+        resource, limit, requested, detail = m.groups()
+        return LutufiResourceLimitError(resource, f"{limit}, requested {requested}", detail)
+
+    if msg.startswith("Numerical underflow") or msg.startswith(
+        "Attempted to compute log-probability"
+    ):
+        return LutufiNumericalError(message=msg)
+
+    return exc
+
+
+def _call_rust(fn, *args, **kwargs):
+    """Call a Rust FFI method, translating a generic ``ValueError`` (if
+    any) into the matching ``LutufiError`` subclass before re-raising."""
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        translated = _translate_error(exc)
+        if translated is exc:
+            raise
+        raise translated from exc
+
+
 # ─── Main BayesianNetwork Class ───────────────────────────────────────────────
 
 class NetworkModel:
@@ -398,8 +464,14 @@ class BayesianNetwork(NetworkModel):
 
         from lutufi.learning import ParameterEstimator
         estimator_obj = ParameterEstimator(method=estimator, alpha=prior_counts)
-        bn = builder.build()
+        # CPTs are learned from data below, so skip the build()-time
+        # validation (which would fail on a model with no CPTs yet).
+        bn = BayesianNetwork(builder._rust)
         estimator_obj.fit(bn, data)
+        if not bn.is_valid():
+            errors = bn.validate().errors
+            if errors:
+                raise LutufiValidationError(errors)
         return bn
 
     @classmethod
@@ -423,18 +495,40 @@ class BayesianNetwork(NetworkModel):
 
         builder = cls.builder()
 
+        domains: Dict[str, List[str]] = {}
         for node in G.nodes():
             domain = state_names.get(str(node)) if state_names else None
             if domain is None:
                 domain = G.nodes[node].get("domain", ["0", "1"])
-            builder.add_variable(str(node), list(domain))
+            domain = list(domain)
+            domains[str(node)] = domain
+            builder.add_variable(str(node), domain)
 
+        parents_of: Dict[str, List[str]] = {str(node): [] for node in G.nodes()}
         for u, v in G.edges():
             builder.add_edge(str(u), str(v))
+            parents_of[str(v)].append(str(u))
 
-        if cpds:
-            for var_name, values in cpds.items():
-                builder.set_cpd(var_name, values)
+        # NetworkX graphs carry no CPT information, so fill in uniform
+        # CPDs for any variable that wasn't given an explicit one. This
+        # keeps the resulting model structurally faithful while still
+        # passing build()'s validation.
+        cpds = cpds or {}
+        for var_name, domain in domains.items():
+            if var_name in cpds:
+                continue
+            k = len(domain)
+            num_configs = 1
+            for parent in parents_of[var_name]:
+                num_configs *= len(domains[parent])
+            uniform = 1.0 / k
+            if num_configs == 1:
+                builder.set_cpd(var_name, [uniform] * k)
+            else:
+                builder.set_cpd(var_name, [[uniform] * num_configs for _ in range(k)])
+
+        for var_name, values in cpds.items():
+            builder.set_cpd(var_name, values)
 
         return builder.build()
 
@@ -630,6 +724,9 @@ class BayesianNetwork(NetworkModel):
         cpd_array = self.cpd(variable_name)
         states = self.get_states(variable_name)
 
+        # cpd_array is a flat array in (parent_config, state) order; reshape
+        # so each row is one parent configuration and each column is a
+        # state of `variable_name`.
         fig, ax = plt.subplots(figsize=kwargs.pop("figsize", (8, 4)))
         im = ax.imshow(cpd_array.reshape(-1, len(states)), aspect="auto", cmap="YlOrRd")
 
@@ -716,7 +813,7 @@ class MarkovRandomField(NetworkModel):
         Returns:
             self for method chaining.
         """
-        self._model.add_edge(name1, name2)
+        _call_rust(self._model.add_edge, name1, name2)
         return self
 
     def nodes(self) -> List[str]:
@@ -843,6 +940,11 @@ class DynamicBayesianNetwork(NetworkModel):
                  name: str = "unnamed"):
         super().__init__(name=name)
         self._model = _rust_model or _RustDynamicBayesianNetwork()
+        # The native _RustDynamicBayesianNetwork does not expose nodes()/edges()
+        # accessors, so track structure on the Python side as it is built up.
+        self._node_names: List[str] = []
+        self._intra_edges: List[Tuple[str, str]] = []
+        self._inter_edges: List[Tuple[str, str]] = []
 
     def add_variable(self, name: str, domain: List[str]) -> "DynamicBayesianNetwork":
         """Add a variable to the DBN.
@@ -855,6 +957,7 @@ class DynamicBayesianNetwork(NetworkModel):
             self for method chaining.
         """
         self._model.add_variable(name, domain)
+        self._node_names.append(name)
         return self
 
     def add_intraslice_edge(self, from_node: str, to_node: str) -> "DynamicBayesianNetwork":
@@ -866,8 +969,12 @@ class DynamicBayesianNetwork(NetworkModel):
 
         Returns:
             self for method chaining.
+
+        Raises:
+            LutufiCyclicGraphError: If the edge would create a cycle.
         """
-        self._model.add_intraslice_edge(from_node, to_node)
+        _call_rust(self._model.add_intraslice_edge, from_node, to_node)
+        self._intra_edges.append((from_node, to_node))
         return self
 
     def add_interslice_edge(self, from_node: str, to_node: str) -> "DynamicBayesianNetwork":
@@ -880,20 +987,25 @@ class DynamicBayesianNetwork(NetworkModel):
         Returns:
             self for method chaining.
         """
-        self._model.add_interslice_edge(from_node, to_node)
+        _call_rust(self._model.add_interslice_edge, from_node, to_node)
+        self._inter_edges.append((from_node, to_node))
         return self
 
     def nodes(self) -> List[str]:
         """Get all variable names in the DBN."""
-        return []
+        return list(self._node_names)
 
     def edges(self) -> List[Tuple[str, str]]:
-        """Get all edges in the DBN."""
-        return []
+        """Get all edges in the DBN (both intra-slice and inter-slice)."""
+        return self._intra_edges + self._inter_edges
 
     def is_valid(self) -> bool:
-        """Check if the DBN is valid."""
-        return True
+        """Check if the DBN is valid.
+
+        Returns:
+            True if the DBN has at least one variable.
+        """
+        return len(self._node_names) > 0
 
     @classmethod
     def from_networkx(cls, G, intra_edges: Optional[List[Tuple[str, str]]] = None,
@@ -991,8 +1103,11 @@ class BayesianNetworkBuilder:
 
         Returns:
             self for method chaining.
+
+        Raises:
+            LutufiCyclicGraphError: If the edge would create a cycle.
         """
-        self._rust.add_edge(parent, child)
+        _call_rust(self._rust.add_edge, parent, child)
         return self
 
     def set_cpd(self, variable: str, values: Union[List[float], List[List[float]]]) -> "BayesianNetworkBuilder":

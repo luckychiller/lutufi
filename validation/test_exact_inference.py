@@ -23,12 +23,13 @@ def test_query_result_formats_dataframes_and_dicts():
     engine = InferenceEngine(model)
     result = engine.query(variables=["C"])
     assert isinstance(result, QueryResult)
-    assert np.allclose(result["C"], [0.22, 0.78], atol=1e-10)
+    # C = A OR B, with P(A=T)=0.4, P(B=T)=0.3, so P(C=F) = P(A=F)*P(B=F) = 0.6*0.7 = 0.42.
+    assert np.allclose(result["C"], [0.42, 0.58], atol=1e-10)
     df = result.to_dataframe()
     assert "probability" in df.columns
     data = result.to_dict()
     assert data["variables"] == ["C"]
-    assert data["distributions"]["C"] == [0.22, 0.78]
+    np.testing.assert_allclose(data["distributions"]["C"], [0.42, 0.58], atol=1e-10)
 
 
 def test_junction_tree_matches_variable_elimination_for_asia():
@@ -59,7 +60,9 @@ def test_map_query_returns_map_assignment_with_correct_state_labels():
     engine = InferenceEngine(model)
     result = engine.map_query(["A", "B"], evidence={"C": "1"})
     assert isinstance(result, QueryResult)
-    assert result.most_probable() == {"A": "T", "B": "T"}
+    # argmax_{A,B} P(A,B|C=T): joint(A,B,C=T) = P(A)P(B) except (F,F) which gives C=F.
+    # (F,T)=0.18, (T,F)=0.28, (T,T)=0.12 -> (T,F) is the MAP assignment.
+    assert result.most_probable() == {"A": "T", "B": "F"}
 
 
 def test_mpe_query_returns_mpe_assignment():
@@ -77,6 +80,9 @@ def test_d_separation_chain_fork_collider():
     chain.add_variable("C", domain=["F", "T"])
     chain.add_edge("A", "B")
     chain.add_edge("B", "C")
+    chain.set_cpd("A", [0.5, 0.5])
+    chain.set_cpd("B", [[0.5, 0.5], [0.5, 0.5]])
+    chain.set_cpd("C", [[0.5, 0.5], [0.5, 0.5]])
     net = chain.build()
 
     assert net.d_separated("A", "C", ["B"])
@@ -89,6 +95,9 @@ def test_d_separation_chain_fork_collider():
     fork.add_variable("C", domain=["F", "T"])
     fork.add_edge("B", "A")
     fork.add_edge("B", "C")
+    fork.set_cpd("B", [0.5, 0.5])
+    fork.set_cpd("A", [[0.5, 0.5], [0.5, 0.5]])
+    fork.set_cpd("C", [[0.5, 0.5], [0.5, 0.5]])
     net = fork.build()
 
     assert net.d_separated("A", "C", ["B"])
@@ -101,6 +110,9 @@ def test_d_separation_chain_fork_collider():
     collider.add_variable("C", domain=["F", "T"])
     collider.add_edge("A", "B")
     collider.add_edge("C", "B")
+    collider.set_cpd("A", [0.5, 0.5])
+    collider.set_cpd("C", [0.5, 0.5])
+    collider.set_cpd("B", [[0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]])
     net = collider.build()
 
     assert net.d_separated("A", "C", [])

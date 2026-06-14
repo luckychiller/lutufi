@@ -106,6 +106,15 @@ impl LBPEngine {
             reduced_factors.push(factor.reduce(evidence)?);
         }
 
+        // Evidence variables are fixed and no longer appear in the scope of
+        // any reduced factor, so they take no part in message passing.
+        // Drop them from the graph entirely to avoid building messages whose
+        // shape no longer matches the (reduced) factors that produced them.
+        for (&var_id, _) in evidence.iter() {
+            self.graph.variables.remove(&var_id);
+            self.graph.var_to_factors.remove(&var_id);
+        }
+
         // 2. Initialize messages
         self.init_messages()?;
 

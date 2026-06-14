@@ -4,18 +4,17 @@ build-backend = "maturin"
 
 [project]
 name = "lutufi"
-version = "0.1.0-dev"
+version = "1.0.0"
 description = "High-performance network analysis library with probabilistic reasoning"
 readme = "README.md"
-license = { text = "MIT OR Apache-2.0" }
+license = { text = "Apache-2.0" }
 authors = [
     { name = "Lutufi Contributors" },
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -67,11 +66,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lutufi/lutufi"
+Homepage = "https://github.com/luckychiller/lutufi"
 Documentation = "https://lutufi.readthedocs.io"
-Repository = "https://github.com/lutufi/lutufi"
-Issues = "https://github.com/lutufi/lutufi/issues"
-Changelog = "https://github.com/lutufi/lutufi/blob/main/CHANGELOG.md"
+Repository = "https://github.com/luckychiller/lutufi"
+Issues = "https://github.com/luckychiller/lutufi/issues"
+Changelog = "https://github.com/luckychiller/lutufi/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 manifest-path = "Cargo.toml"

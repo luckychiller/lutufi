@@ -106,6 +106,8 @@ class TestContextManagers:
         builder = BayesianNetwork.builder()
         builder.add_variable("A", domain=["0", "1"])
         builder.add_variable("B", domain=["0", "1"])
+        builder.set_cpd("A", [0.5, 0.5])
+        builder.set_cpd("B", [0.5, 0.5])
         model = builder.build()
 
         with model.edit() as m:
@@ -118,6 +120,8 @@ class TestContextManagers:
         builder = BayesianNetwork.builder()
         builder.add_variable("A", domain=["0", "1"])
         builder.add_variable("B", domain=["0", "1"])
+        builder.set_cpd("A", [0.5, 0.5])
+        builder.set_cpd("B", [0.5, 0.5])
         model = builder.build()
         initial_edges = model.edges()
 

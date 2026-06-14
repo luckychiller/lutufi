@@ -10,27 +10,22 @@ This package provides Python bindings for the Lutufi Rust core, offering:
 Example:
     >>> import lutufi
     >>> print(lutufi.__version__)
-    '0.1.0-dev'
+    '1.0.0'
 """
 
 try:
     from lutufi._lutufi import (
         __version__,
-        models,
-        inference,
-        learning,
-        io,
         Variable,
         Domain,
     )
-except ImportError:
-    __version__ = "0.1.0-dev"
-    models = None
-    inference = None
-    learning = None
-    io = None
-    Variable = None
-    Domain = None
+except ImportError as e:
+    raise ImportError(
+        "Lutufi native extension ('_lutufi') failed to import.\n"
+        "Run 'maturin develop --release' from the repository root to build it,\n"
+        "or install a prebuilt wheel with 'pip install lutufi'.\n"
+        "See INSTALL.md for platform-specific instructions."
+    ) from e
 
 from lutufi.inference import (
     InferenceEngine,

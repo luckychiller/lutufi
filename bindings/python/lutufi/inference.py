@@ -15,6 +15,8 @@ import warnings
 import numpy as np
 from dataclasses import dataclass, field
 
+from .models import _call_rust
+
 
 # ─── Inference Options ────────────────────────────────────────────────────────
 
@@ -479,19 +481,22 @@ class InferenceEngine:
             alg = self._select_algorithm(variables)
 
         if alg in ("exact", "variable_elimination"):
-            return self._query_ve(variables, kwargs.get("elimination_order"))
+            mode = kwargs.get("mode", "marginal")
+            if mode in ("map", "mpe"):
+                return _call_rust(self._query_ve_map, variables, mode, kwargs.get("elimination_order"))
+            return _call_rust(self._query_ve, variables, kwargs.get("elimination_order"))
 
         if alg == "junction_tree":
-            return self._query_jt(variables)
+            return _call_rust(self._query_jt, variables)
 
         if alg == "lbp":
-            return self._query_lbp(variables, **kwargs)
+            return _call_rust(self._query_lbp, variables, **kwargs)
 
         if alg == "mcmc":
-            return self._query_mcmc(variables, **kwargs)
+            return _call_rust(self._query_mcmc, variables, **kwargs)
 
         if alg == "variational":
-            return self._query_vi(variables, **kwargs)
+            return _call_rust(self._query_vi, variables, **kwargs)
 
         raise ValueError(f"Unknown inference algorithm: {alg}")
 
@@ -521,6 +526,26 @@ class InferenceEngine:
             self._model._model, variables, self._build_evidence_map(), heuristic
         )
         return self._build_query_result(raw, variables, "variable_elimination")
+
+    def _query_ve_map(
+        self, variables: List[str], mode: str, heuristic: Any
+    ) -> QueryResult:
+        if not self._rust_ve:
+            raise RuntimeError("Native extension not loaded")
+        raw = self._rust_ve.query_map(
+            self._model._model, variables, self._build_evidence_map(), heuristic, mode
+        )
+        result = self._build_query_result(raw, variables, "variable_elimination")
+
+        # For MPE, evidence variables are reduced out of the result factor
+        # entirely, but the most probable *explanation* includes their
+        # observed states. MAP queries only report the requested variables.
+        if mode == "mpe":
+            for var, value in self._evidence.items():
+                if var not in result._argmax:
+                    states = self._model.get_states(var)
+                    result._argmax[var] = states[int(value)]
+        return result
 
     def _query_jt(self, variables: List[str]) -> QueryResult:
         jt = self._get_jt_engine()

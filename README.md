@@ -74,7 +74,7 @@ To use Lutufi today, you must build it from source. This requires:
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/lutufi/lutufi.git
+git clone https://github.com/luckychiller/lutufi.git
 cd lutufi
 ```
 
@@ -219,7 +219,7 @@ Key areas where help is needed:
 
 ```bash
 # Clone and setup
-git clone https://github.com/lutufi/lutufi.git
+git clone https://github.com/luckychiller/lutufi.git
 cd lutufi
 
 # Install development dependencies

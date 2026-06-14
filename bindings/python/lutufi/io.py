@@ -120,6 +120,8 @@ def write_graph(
     if hasattr(graph, "to_networkx"):
         graph = graph.to_networkx()
 
+    graph = _stringify_list_attrs(graph, nx)
+
     writers = {
         "graphml": nx.write_graphml,
         "gexf": nx.write_gexf,
@@ -137,6 +139,38 @@ def write_graph(
         writer(graph, str(path), **kwargs)
     except Exception as e:
         raise GraphIOError(f"Failed to write {path} as {format}: {e}")
+
+
+def _stringify_list_attrs(graph: Any, nx: Any) -> Any:
+    """Return a copy of `graph` with list/tuple-valued attributes converted
+    to delimited strings.
+
+    Formats like GraphML and GEXF only support scalar attribute types, so
+    list-valued attributes (e.g. a variable's ``domain``) must be flattened
+    to strings before writing.
+    """
+    has_list_attr = any(
+        isinstance(v, (list, tuple))
+        for _, data in graph.nodes(data=True)
+        for v in data.values()
+    ) or any(
+        isinstance(v, (list, tuple))
+        for _, _, data in graph.edges(data=True)
+        for v in data.values()
+    )
+    if not has_list_attr:
+        return graph
+
+    graph = graph.copy()
+    for _, data in graph.nodes(data=True):
+        for key, value in data.items():
+            if isinstance(value, (list, tuple)):
+                data[key] = "|".join(str(v) for v in value)
+    for _, _, data in graph.edges(data=True):
+        for key, value in data.items():
+            if isinstance(value, (list, tuple)):
+                data[key] = "|".join(str(v) for v in value)
+    return graph
 
 
 def _infer_format(suffix: str) -> FileFormat:

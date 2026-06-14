@@ -74,7 +74,7 @@ class StructureLearner:
             processed_data.append({str(k): str(v) for k, v in record.items() if pd.notnull(v)})
 
         rust_bn = self._inner.learn_structure(processed_data, method)
-        return BayesianNetwork(_model=rust_bn)
+        return BayesianNetwork(rust_bn)
 
 def fit(model: BayesianNetwork, data: pd.DataFrame, method: str = "mle", **kwargs) -> None:
     """Convenience function to fit a model to data."""
