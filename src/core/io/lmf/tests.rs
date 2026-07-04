@@ -8,22 +8,22 @@ mod tests {
 
     fn create_test_network() -> BayesianNetwork {
         let mut network = BayesianNetwork::new();
-        network.add_variable("A", Domain::binary());
-        network.add_variable("B", Domain::binary());
+        network.add_variable("A", Domain::binary()).unwrap();
+        network.add_variable("B", Domain::binary()).unwrap();
         network.add_edge("A", "B").unwrap();
         let a_var = network.variable("A").unwrap().clone();
         let b_var = network.variable("B").unwrap().clone();
         let cpt_a = ConditionalProbabilityTable::from_values(
             &a_var,
             &[] as &[&Variable],
-            vec![vec![0.5, 0.5]],
+            vec![vec![0.5], vec![0.5]],
         )
         .unwrap();
         network.set_cpd("A", cpt_a).unwrap();
         let cpt_b = ConditionalProbabilityTable::from_values(
             &b_var,
             &[&a_var],
-            vec![vec![0.9, 0.1], vec![0.2, 0.8]],
+            vec![vec![0.9, 0.2], vec![0.1, 0.8]],
         )
         .unwrap();
         network.set_cpd("B", cpt_b).unwrap();
@@ -186,12 +186,13 @@ mod tests {
             .add_variable(
                 "Color",
                 Domain::discrete(vec!["red", "green", "blue"]).unwrap(),
-            );
+            )
+            .unwrap();
         let var = network.variable("Color").unwrap().clone();
         let cpt = ConditionalProbabilityTable::from_values(
             &var,
             &[] as &[&Variable],
-            vec![vec![0.3, 0.4, 0.3]],
+            vec![vec![0.3], vec![0.4], vec![0.3]],
         )
         .unwrap();
         network.set_cpd("Color", cpt).unwrap();

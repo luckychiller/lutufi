@@ -6,6 +6,22 @@ authors = ["Wasswa Lutufi Sebbanja"]
 description = "Probabilistic inference over social and economic networks"
 license = "Apache-2.0"
 repository = "https://github.com/luckychiller/lutufi"
+readme = "README.md"
+keywords = ["bayesian-network", "inference", "graphical-models", "causality"]
+categories = ["science", "mathematics", "algorithms"]
+# Keep the sdist / crate package lean: research notes, design docs, and CI
+# config are on GitHub but not needed to build the library.
+exclude = [
+    "/docs",
+    "/research",
+    "/.github",
+    "/venv",
+    "/prompt.md",
+    "/thought.txt",
+    "/LUTUFI_GUIDE.md",
+    "/validation",
+    "/examples",
+]
 
 [lib]
 name = "lutufi_core"

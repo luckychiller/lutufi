@@ -333,27 +333,20 @@ impl BifFormat {
                 .product();
             let parent_card = parent_card.max(1);
 
-            let mut matrix = vec![vec![0.0f64; child_domain_size]; parent_card];
+            // BIF tables are child-innermost (idx = parent_config * child_size
+            // + child_state); `from_values` expects one row per child state.
+            let mut matrix = vec![vec![0.0f64; parent_card]; child_domain_size];
             for pc in 0..parent_card {
                 for cs in 0..child_domain_size {
                     let idx = pc * child_domain_size + cs;
                     if idx < table.len() {
-                        matrix[pc][cs] = table[idx];
+                        matrix[cs][pc] = table[idx];
                     }
                 }
             }
-            eprintln!("DEBUG BIF matrix for {}: {:?}, parent_card={}, child_domain_size={}, parent_vars={:?}",
-                child, matrix, parent_card, child_domain_size,
-                parent_vars.iter().map(|v| v.name()).collect::<Vec<_>>());
 
-            match ConditionalProbabilityTable::from_values(&child_var, &parent_vars, matrix) {
-                Ok(cpt) => {
-                    if let Err(e) = network.set_cpd(child, cpt) {
-                        eprintln!("DEBUG BIF: set_cpd({}) failed: {:?}", child, e);
-                    }
-                }
-                Err(e) => eprintln!("DEBUG BIF: from_values({}) failed: {:?}", child, e),
-            }
+            let cpt = ConditionalProbabilityTable::from_values(&child_var, &parent_vars, matrix)?;
+            network.set_cpd(child, cpt)?;
         }
 
         Ok(network)
@@ -377,22 +370,22 @@ mod tests {
 
     fn create_simple_network() -> BayesianNetwork {
         let mut net = BayesianNetwork::new();
-        net.add_variable("X", Domain::binary());
-        net.add_variable("Y", Domain::binary());
+        net.add_variable("X", Domain::binary()).unwrap();
+        net.add_variable("Y", Domain::binary()).unwrap();
         net.add_edge("X", "Y").unwrap();
         let x_var = net.variable("X").unwrap().clone();
         let y_var = net.variable("Y").unwrap().clone();
         let cpt_x = ConditionalProbabilityTable::from_values(
             &x_var,
             &[] as &[&Variable],
-            vec![vec![0.5, 0.5]],
+            vec![vec![0.5], vec![0.5]],
         )
         .unwrap();
         net.set_cpd("X", cpt_x).unwrap();
         let cpt_y = ConditionalProbabilityTable::from_values(
             &y_var,
             &[&x_var],
-            vec![vec![0.9, 0.1], vec![0.2, 0.8]],
+            vec![vec![0.9, 0.2], vec![0.1, 0.8]],
         )
         .unwrap();
         net.set_cpd("Y", cpt_y).unwrap();
@@ -414,9 +407,6 @@ mod tests {
         let original = create_simple_network();
         let bif = BifFormat::export(&original).unwrap();
         let imported = BifFormat::import(&bif).unwrap();
-        eprintln!("original nodes={} edges={}, imported nodes={} edges={}",
-            original.nodes().len(), original.edges().len(),
-            imported.nodes().len(), imported.edges().len());
         assert_eq!(original.nodes().len(), imported.nodes().len());
         assert_eq!(original.edges().len(), imported.edges().len());
         for name in original.nodes() {

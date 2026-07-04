@@ -107,14 +107,14 @@ mod tests {
 
     fn create_test_network() -> BayesianNetwork {
         let mut net = BayesianNetwork::new();
-        net.add_variable("X", Domain::binary());
-        net.add_variable("Y", Domain::binary());
+        net.add_variable("X", Domain::binary()).unwrap();
+        net.add_variable("Y", Domain::binary()).unwrap();
         net.add_edge("X", "Y").unwrap();
         let x = net.variable("X").unwrap().clone();
         let y = net.variable("Y").unwrap().clone();
-        let cx = ConditionalProbabilityTable::from_values(&x, &[] as &[&Variable], vec![vec![0.5, 0.5]]).unwrap();
+        let cx = ConditionalProbabilityTable::from_values(&x, &[] as &[&Variable], vec![vec![0.5], vec![0.5]]).unwrap();
         net.set_cpd("X", cx).unwrap();
-        let cy = ConditionalProbabilityTable::from_values(&y, &[&x], vec![vec![0.9, 0.1], vec![0.2, 0.8]]).unwrap();
+        let cy = ConditionalProbabilityTable::from_values(&y, &[&x], vec![vec![0.9, 0.2], vec![0.1, 0.8]]).unwrap();
         net.set_cpd("Y", cy).unwrap();
         net
     }

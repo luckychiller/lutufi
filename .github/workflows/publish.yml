@@ -76,14 +76,13 @@ jobs:
     needs: test
     strategy:
       matrix:
-        target: [x64]
+        target: [x64, aarch64]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          architecture: ${{ matrix.target }}
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1

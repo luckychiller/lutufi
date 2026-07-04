@@ -18,7 +18,15 @@ impl UaiFormat {
         out.push_str("BAYES\n");
 
         let variables = network.variables();
-        let node_names: Vec<&str> = network.nodes();
+        // `nodes()` iterates a HashMap, so its order is nondeterministic.
+        // UAI identifies variables purely by index, so use a deterministic
+        // (topological, falling back to sorted) ordering to make exports
+        // stable and round-trippable.
+        let node_names: Vec<&str> = network.topological_order().unwrap_or_else(|_| {
+            let mut ns = network.nodes();
+            ns.sort_unstable();
+            ns
+        });
         let n = node_names.len();
 
         let domain_sizes: Vec<usize> = node_names
@@ -36,8 +44,6 @@ impl UaiFormat {
         );
         out.push('\n');
 
-        let order =
-            network.topological_order().unwrap_or_else(|_| node_names.iter().map(|s| *s).collect());
         let mut scopes: Vec<Vec<usize>> = Vec::new();
         let mut tables: Vec<Vec<f64>> = Vec::new();
         let mut name_to_idx: HashMap<String, usize> = HashMap::new();
@@ -45,7 +51,7 @@ impl UaiFormat {
             name_to_idx.insert(name.to_string(), i);
         }
 
-        for var_name in &order {
+        for var_name in &node_names {
             let cpt = match network.cpd(var_name) {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -283,21 +289,22 @@ impl UaiFormat {
                         .product();
                     let parent_card = parent_card.max(1);
 
-                    let mut matrix = vec![vec![0.0f64; child_domain_size]; parent_card];
+                    // UAI tables are child-innermost (idx = parent_config *
+                    // child_size + child_state); `from_values` expects one
+                    // row per child state.
+                    let mut matrix = vec![vec![0.0f64; parent_card]; child_domain_size];
                     for pc in 0..parent_card {
                         for cs in 0..child_domain_size {
                             let idx_flat = pc * child_domain_size + cs;
                             if idx_flat < table.len() {
-                                matrix[pc][cs] = table[idx_flat];
+                                matrix[cs][pc] = table[idx_flat];
                             }
                         }
                     }
 
-                    if let Ok(cpt) =
-                        ConditionalProbabilityTable::from_values(&child_var, &parent_vars, matrix)
-                    {
-                        let _ = network.set_cpd(&child_name, cpt);
-                    }
+                    let cpt =
+                        ConditionalProbabilityTable::from_values(&child_var, &parent_vars, matrix)?;
+                    network.set_cpd(&child_name, cpt)?;
                 }
             }
         }
@@ -323,22 +330,22 @@ mod tests {
 
     fn create_simple_network() -> BayesianNetwork {
         let mut net = BayesianNetwork::new();
-        net.add_variable("X0", Domain::binary());
-        net.add_variable("X1", Domain::binary());
+        net.add_variable("X0", Domain::binary()).unwrap();
+        net.add_variable("X1", Domain::binary()).unwrap();
         net.add_edge("X0", "X1").unwrap();
         let x0 = net.variable("X0").unwrap().clone();
         let x1 = net.variable("X1").unwrap().clone();
         let cpt0 = ConditionalProbabilityTable::from_values(
             &x0,
             &[] as &[&Variable],
-            vec![vec![0.5, 0.5]],
+            vec![vec![0.5], vec![0.5]],
         )
         .unwrap();
         net.set_cpd("X0", cpt0).unwrap();
         let cpt1 = ConditionalProbabilityTable::from_values(
             &x1,
             &[&x0],
-            vec![vec![0.9, 0.1], vec![0.2, 0.8]],
+            vec![vec![0.9, 0.2], vec![0.1, 0.8]],
         )
         .unwrap();
         net.set_cpd("X1", cpt1).unwrap();

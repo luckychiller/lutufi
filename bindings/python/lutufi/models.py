@@ -352,7 +352,7 @@ class NetworkModel:
         Example:
             >>> with model.edit() as m:
             ...     m.add_edge("A", "B")
-            ...     m.set_cpd("B", [[0.9, 0.1], [0.2, 0.8]])
+            ...     m.set_cpd("B", [[0.9, 0.2], [0.1, 0.8]])
         """
         # Snapshot the current state
         import copy
@@ -409,7 +409,7 @@ class BayesianNetwork(NetworkModel):
             ...     .add_variable("B", domain=["0", "1"])
             ...     .add_edge("A", "B")
             ...     .set_cpd("A", [0.3, 0.7])
-            ...     .set_cpd("B", [[0.9, 0.1], [0.2, 0.8]])
+            ...     .set_cpd("B", [[0.9, 0.2], [0.1, 0.8]])
             ...     .build())
         """
         return BayesianNetworkBuilder()
@@ -662,7 +662,7 @@ class BayesianNetwork(NetworkModel):
         Example:
             >>> with model.edit() as m:
             ...     m.add_edge("A", "B")
-            ...     m.set_cpd("B", [[0.9, 0.1], [0.2, 0.8]])
+            ...     m.set_cpd("B", [[0.9, 0.2], [0.1, 0.8]])
         """
         import copy
         snapshot = copy.deepcopy(self._model) if hasattr(self, '_model') else None
@@ -1075,7 +1075,7 @@ class BayesianNetworkBuilder:
         ...     .add_variable("B", domain=["0", "1"])
         ...     .add_edge("A", "B")
         ...     .set_cpd("A", [0.3, 0.7])
-        ...     .set_cpd("B", [[0.9, 0.1], [0.2, 0.8]])
+        ...     .set_cpd("B", [[0.9, 0.2], [0.1, 0.8]])
         ...     .build())
     """
     def __init__(self):
@@ -1115,8 +1115,10 @@ class BayesianNetworkBuilder:
 
         Args:
             variable: Name of the variable.
-            values: Flat list of probabilities (for root nodes) or
-                   nested list with one row per parent configuration.
+            values: Flat list of probabilities (for root nodes) or a nested
+                list with one row per child state and one column per parent
+                configuration. Each column (the distribution over the child's
+                states for a fixed parent configuration) must sum to 1.
 
         Returns:
             self for method chaining.
@@ -1141,36 +1143,3 @@ class BayesianNetworkBuilder:
         return bn
 
 
-# ─── Helper Functions ─────────────────────────────────────────────────────────
-
-def _estimate_cpd(data, variable, parents, states, estimator, prior_counts):
-    """Estimate a CPT from data (internal helper)."""
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for CPD estimation.")
-
-    counts = data.groupby(parents + [variable]).size().unstack(fill_value=0) if parents else \
-             data[variable].value_counts()
-    if estimator == "bayesian":
-        counts = counts + prior_counts
-    else:
-        counts = counts + prior_counts  # Laplace smoothing for MLE too
-
-    if parents:
-        cpt = counts.div(counts.sum(axis=1), axis=0).fillna(1.0 / len(states))
-    else:
-        cpt = counts / counts.sum()
-
-    return cpt.values.tolist()
-
-
-def _cartesian_product(lists):
-    """Compute cartesian product of a list of lists."""
-    if not lists:
-        return [[]]
-    result = []
-    for item in lists[0]:
-        for rest in _cartesian_product(lists[1:]):
-            result.append([item] + rest)
-    return result

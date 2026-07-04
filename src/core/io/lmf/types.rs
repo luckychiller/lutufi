@@ -204,14 +204,18 @@ pub struct VerifyCheck {
     pub detail: String,
 }
 
-/// Reshape a flat probability table into a 2-D matrix (parent-config × child-state).
+/// Reshape a flat probability table into a 2-D matrix (child-state × parent-config).
+///
+/// The flat table is stored child-innermost (idx = parent_config * child_size
+/// + child_state), and `ConditionalProbabilityTable::from_values` expects one
+/// row per child state and one column per parent configuration.
 pub fn flatten_to_2d(values: &[f64], child_size: usize, parent_configs: usize) -> Vec<Vec<f64>> {
-    let mut matrix = vec![vec![0.0f64; child_size]; parent_configs.max(1)];
+    let mut matrix = vec![vec![0.0f64; parent_configs.max(1)]; child_size];
     for pc in 0..parent_configs.max(1) {
         for cs in 0..child_size {
             let idx = pc * child_size + cs;
             if idx < values.len() {
-                matrix[pc][cs] = values[idx];
+                matrix[cs][pc] = values[idx];
             }
         }
     }

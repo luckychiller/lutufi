@@ -180,32 +180,8 @@ impl CausalModel {
         ancestors
     }
 
-    fn subgraph_over(&self, ids: &HashSet<VariableId>) -> crate::core::graph::DirectedVariableGraph {
-        let mut sub = crate::core::graph::DirectedVariableGraph::new();
-        for &id in ids {
-            sub.add_node(id);
-        }
-        for &id in ids {
-            for child in self.network.graph.children(&id) {
-                if ids.contains(&child) {
-                    if let (Some(from_name), Some(to_name)) = (
-                        self.network.registry().variable(&id).map(|v| v.name().to_string()),
-                        self.network.registry().variable(&child).map(|v| v.name().to_string()),
-                    ) {
-                        let _ = sub.add_edge(&id, &child, &from_name, &to_name);
-                    }
-                }
-            }
-        }
-        sub
-    }
-
     fn all_var_ids(&self) -> HashSet<VariableId> {
         self.network.variables().keys().copied().collect()
-    }
-
-    fn ancestors_of_intervention(&self, interventions: &HashSet<VariableId>) -> HashSet<VariableId> {
-        self.ancestors_in_mutilated(interventions, interventions)
     }
 
     fn id_recursive(&self, targets: &HashSet<VariableId>, interventions: &HashSet<VariableId>, depth: usize) -> LutufiResult<IdResult> {

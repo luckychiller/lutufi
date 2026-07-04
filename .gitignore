@@ -6,14 +6,15 @@
 /target/
 **/*.rs.bk
 *.pdb
-
+.claude
 **/research/
-
+thought.txt
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 .Python
 build/
 develop-eggs/

@@ -1,6 +1,20 @@
 # Installing Lutufi
 
-## Quick Install (from source)
+## Quick Install (PyPI)
+
+```bash
+pip install lutufi
+```
+
+Prebuilt wheels are published for Linux, macOS, and Windows (x86_64 and
+arm64), covering Python 3.9+ — no Rust toolchain required. For the optional
+plotting helpers (`plot()`, `plot_cpd()`), install the visualization extra:
+
+```bash
+pip install "lutufi[visualization]"
+```
+
+## Installing from Source
 
 ### Prerequisites
 
@@ -82,14 +96,16 @@ python -c "import lutufi; print(lutufi.__version__)"
 
 ## Building Wheels
 
-To build distributable wheels for all supported platforms:
+To build a distributable wheel for your platform:
 
 ```bash
-pip install cibuildwheel
-cibuildwheel --platform linux   # or "windows" or "macos"
+pip install maturin
+maturin build --release --features python
 ```
 
-Wheels are output to `wheelhouse/`.
+Wheels are output to `target/wheels/`. Official multi-platform wheels are
+built in CI via [maturin-action](https://github.com/PyO3/maturin-action)
+(see `.github/workflows/publish.yml`).
 
 ## Troubleshooting
 
@@ -105,10 +121,9 @@ Wheels are output to `wheelhouse/`.
 ### Runtime (Python)
 
 - numpy >= 1.21.0
-- scipy >= 1.7.0
 - networkx >= 2.6.0
 - pandas >= 1.3.0
-- matplotlib >= 3.4.0
+- matplotlib >= 3.4.0 (optional, `lutufi[visualization]`)
 
 ### Build (Rust)
 

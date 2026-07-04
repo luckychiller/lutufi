@@ -204,10 +204,10 @@ mod tests {
         let var_a = bn.variable("A").unwrap();
         let var_b = bn.variable("B").unwrap();
         let cpd_a = crate::core::factor::ConditionalProbabilityTable::from_values(
-            var_a, &[], vec![vec![0.5, 0.5]],
+            var_a, &[], vec![vec![0.5], vec![0.5]],
         ).unwrap();
         let cpd_b = crate::core::factor::ConditionalProbabilityTable::from_values(
-            var_b, &[var_a], vec![vec![0.9, 0.1], vec![0.2, 0.8]],
+            var_b, &[var_a], vec![vec![0.9, 0.2], vec![0.1, 0.8]],
         ).unwrap();
         bn.set_cpd("A", cpd_a).unwrap();
         bn.set_cpd("B", cpd_b).unwrap();
