@@ -41,6 +41,12 @@ pub struct LmfGraph {
     pub variables: Vec<LmfVariable>,
     /// Directed edges stored as `[parent, child]` pairs.
     pub edges: Vec<[String; 2]>,
+    /// Whether the edges represent causal mechanisms (set via
+    /// `BayesianNetwork::mark_as_causal()`), gating `do()`/identification
+    /// queries. Defaults to `false` so documents written before this field
+    /// existed still deserialize correctly.
+    #[serde(default)]
+    pub is_causal: bool,
 }
 
 /// A named variable with an associated domain.

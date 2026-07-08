@@ -98,6 +98,7 @@ impl LmfDocument {
             graph: LmfGraph {
                 variables: lmf_vars,
                 edges: lmf_edges,
+                is_causal: network.is_causal(),
             },
             parameters: LmfParameters { cpds },
             evidence: None,
@@ -191,6 +192,10 @@ impl LmfDocument {
             )?;
 
             network.set_cpd(&cpd.child, cpt)?;
+        }
+
+        if self.graph.is_causal {
+            network.mark_as_causal();
         }
 
         Ok(network)

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple, Union, Any, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 import warnings
 
 import numpy as np
@@ -398,6 +399,76 @@ class BayesianNetwork(NetworkModel):
             List of state names.
         """
         return self._model.get_states(variable_name)
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Serialize this network (structure + CPDs) to Lutufi's native LMF
+        format at `path`.
+
+        Unlike `to_networkx()` / `lutufi.io.write_graph()`, this preserves
+        full model fidelity — variables, edges, domains, and fitted CPDs —
+        so the exact model can be reloaded with `BayesianNetwork.load()`.
+
+        Args:
+            path: Destination file path (conventionally ``*.lmf``).
+
+        Example:
+            >>> model.save("trained_model.lmf")
+            >>> reloaded = BayesianNetwork.load("trained_model.lmf")
+        """
+        try:
+            self._model.save(str(path))
+        except ValueError as exc:
+            raise LutufiSerializationError(path=str(path), reason=str(exc)) from exc
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "BayesianNetwork":
+        """Load a Bayesian network (structure + CPDs) previously written by
+        `save()` from Lutufi's native LMF format at `path`.
+
+        Args:
+            path: Path to an LMF file written by `save()`.
+
+        Returns:
+            The reconstructed BayesianNetwork, with CPDs intact.
+        """
+        try:
+            rust_model = _RustBayesianNetwork.load(str(path))
+        except ValueError as exc:
+            raise LutufiSerializationError(path=str(path), reason=str(exc)) from exc
+        return cls(rust_model)
+
+    def to_lmf_json(self) -> str:
+        """Serialize this network (structure + CPDs) to an LMF JSON string,
+        without touching the filesystem.
+
+        Useful for embedding a trained model directly in another artifact
+        (e.g. alongside a separate model's weights in a packaged submission)
+        instead of shipping a separate ``.lmf`` file.
+
+        Returns:
+            The LMF document as a JSON string.
+        """
+        try:
+            return self._model.to_lmf_json()
+        except ValueError as exc:
+            raise LutufiSerializationError(reason=str(exc)) from exc
+
+    @classmethod
+    def from_lmf_json(cls, json: str) -> "BayesianNetwork":
+        """Reconstruct a BayesianNetwork from an LMF JSON string produced by
+        `to_lmf_json()`.
+
+        Args:
+            json: An LMF document as a JSON string.
+
+        Returns:
+            The reconstructed BayesianNetwork, with CPDs intact.
+        """
+        try:
+            rust_model = _RustBayesianNetwork.from_lmf_json(json)
+        except ValueError as exc:
+            raise LutufiSerializationError(reason=str(exc)) from exc
+        return cls(rust_model)
 
     @classmethod
     def builder(cls) -> "BayesianNetworkBuilder":

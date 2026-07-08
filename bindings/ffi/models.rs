@@ -128,6 +128,35 @@ impl PyBayesianNetwork {
     /// Return whether this network is marked as a causal model.
     pub fn is_causal(&self) -> bool { self.inner.is_causal() }
 
+    /// Serialize this network (structure + CPDs) to an LMF JSON file at `path`.
+    pub fn save(&self, path: &str) -> PyResult<()> {
+        self.inner.save_lmf(path).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Load a Bayesian network (structure + CPDs) from an LMF JSON file at `path`.
+    #[staticmethod]
+    pub fn load(path: &str) -> PyResult<Self> {
+        BayesianNetwork::load_lmf(path)
+            .map(|inner| PyBayesianNetwork { inner })
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Serialize this network (structure + CPDs) to an LMF JSON string.
+    pub fn to_lmf_json(&self) -> PyResult<String> {
+        let doc = crate::core::io::lmf::LmfDocument::from_bayesian_network(&self.inner)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        serde_json::to_string_pretty(&doc)
+            .map_err(|e| PyValueError::new_err(format!("JSON serialization failed: {}", e)))
+    }
+
+    /// Deserialize a Bayesian network (structure + CPDs) from an LMF JSON string.
+    #[staticmethod]
+    pub fn from_lmf_json(json: &str) -> PyResult<Self> {
+        BayesianNetwork::load_lmf_from_str(json)
+            .map(|inner| PyBayesianNetwork { inner })
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
     /// Return a shallow copy of this Bayesian network.
     pub fn __copy__(&self) -> Self {
         PyBayesianNetwork { inner: self.inner.clone() }
