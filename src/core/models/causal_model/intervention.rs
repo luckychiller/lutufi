@@ -88,8 +88,13 @@ impl CausalModel {
         })?;
         obs_evidence.set(t_id, treatment_value);
 
+        // marginal_prob resolves states by index (factor scopes carry no
+        // state names), so translate the outcome's state name to its domain
+        // index up front. Passing the raw name only works for "true"/"false".
+        let outcome_idx = self.outcome_state_index(outcome, outcome_value)?;
+
         let obs_result = self.network.query(&[outcome], &obs_evidence, crate::core::inference::Algorithm::Auto)?;
-        let p_y_given_x = obs_result.marginal_prob(outcome, outcome_value)?;
+        let p_y_given_x = obs_result.marginal_prob(outcome, &outcome_idx.to_string())?;
 
         if p_y_given_x <= 1e-15 {
             return Ok(0.0);
@@ -104,10 +109,23 @@ impl CausalModel {
 
         let mutilated = self.do_operator(&ref_intervention)?;
         let mutilated_result = mutilated.query(&[outcome], &Assignment::new(), crate::core::inference::Algorithm::Auto)?;
-        let p_y_do_ref = mutilated_result.marginal_prob(outcome, outcome_value)?;
+        let p_y_do_ref = mutilated_result.marginal_prob(outcome, &outcome_idx.to_string())?;
 
         let pn = (p_y_given_x - p_y_do_ref) / p_y_given_x;
         Ok(pn.max(0.0).min(1.0))
+    }
+
+    /// Resolve an outcome variable's state name to its domain index, for use
+    /// with `InferenceResult::marginal_prob` (which resolves by index).
+    fn outcome_state_index(&self, outcome: &str, outcome_value: &str) -> LutufiResult<usize> {
+        let o_id = self.network.id_of(outcome)?;
+        let o_var = self.network.registry().variable(&o_id).ok_or_else(|| LutufiError::VariableNotFound {
+            name: outcome.to_string(), available: "".to_string(),
+        })?;
+        o_var.domain().index_of(outcome_value).ok_or_else(|| LutufiError::ValueNotInDomain {
+            value: outcome_value.to_string(), variable: outcome.to_string(),
+            valid_values: format!("{:?}", o_var.domain()),
+        })
     }
 
     /// Computes the probability of sufficiency (PS): the probability that the outcome would have occurred
@@ -131,10 +149,12 @@ impl CausalModel {
             valid_values: format!("{:?}", t_var.domain()),
         })?;
 
+        let outcome_idx = self.outcome_state_index(outcome, outcome_value)?;
+
         let mut ref_evidence = Assignment::new();
         ref_evidence.set(t_id, reference_value);
         let ref_result = self.network.query(&[outcome], &ref_evidence, crate::core::inference::Algorithm::Auto)?;
-        let p_y_given_ref = ref_result.marginal_prob(outcome, outcome_value)?;
+        let p_y_given_ref = ref_result.marginal_prob(outcome, &outcome_idx.to_string())?;
         let p_not_y_given_ref = 1.0 - p_y_given_ref;
 
         if p_not_y_given_ref <= 1e-15 {
@@ -150,7 +170,7 @@ impl CausalModel {
 
         let mutilated = self.do_operator(&treatment_intervention)?;
         let mutilated_result = mutilated.query(&[outcome], &Assignment::new(), crate::core::inference::Algorithm::Auto)?;
-        let p_y_do_treat = mutilated_result.marginal_prob(outcome, outcome_value)?;
+        let p_y_do_treat = mutilated_result.marginal_prob(outcome, &outcome_idx.to_string())?;
 
         let ps = (p_y_do_treat - p_y_given_ref) / p_not_y_given_ref;
         Ok(ps.max(0.0).min(1.0))

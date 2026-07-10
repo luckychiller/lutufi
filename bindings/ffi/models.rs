@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use std::collections::HashMap;
 use crate::core::{
+    assignment::Assignment,
     domain::Domain,
     factor::ConditionalProbabilityTable,
     models::bayesian_network::BayesianNetwork,
@@ -128,6 +129,107 @@ impl PyBayesianNetwork {
     /// Return whether this network is marked as a causal model.
     pub fn is_causal(&self) -> bool { self.inner.is_causal() }
 
+    /// Apply Pearl's do-operator: remove incoming edges to each intervened
+    /// variable and fix it to the given value, returning the mutilated
+    /// interventional network. Requires mark_as_causal() to have been called.
+    pub fn do_operator(&self, intervention: HashMap<String, String>) -> PyResult<Self> {
+        self.require_causal("do_operator")?;
+        let cm = crate::core::models::CausalModel::new(self.inner.clone());
+        let assign = self.assignment_from_map(&intervention)?;
+        cm.do_operator(&assign)
+            .map(|inner| PyBayesianNetwork { inner })
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Compute P(targets | do(interventions)): marginal distributions of the
+    /// target variables in the mutilated network. Returns a dict mapping each
+    /// target name to its marginal probability vector (in state order).
+    pub fn causal_query(
+        &self,
+        py: Python<'_>,
+        targets: Vec<String>,
+        interventions: HashMap<String, String>,
+    ) -> PyResult<HashMap<String, PyObject>> {
+        self.require_causal("causal_query")?;
+        let assign = self.assignment_from_map(&interventions)?;
+        let result = py.allow_threads(|| {
+            let cm = crate::core::models::CausalModel::new(self.inner.clone());
+            let target_refs: Vec<&str> = targets.iter().map(|s| s.as_str()).collect();
+            cm.causal_query(&target_refs, &assign)
+        }).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Self::pack_marginals(py, &targets, &result)
+    }
+
+    /// Counterfactual query: condition on `observed` evidence, apply
+    /// `intervention`, and return marginals of the `query` variables.
+    pub fn counterfactual(
+        &self,
+        py: Python<'_>,
+        observed: HashMap<String, String>,
+        intervention: HashMap<String, String>,
+        query: Vec<String>,
+    ) -> PyResult<HashMap<String, PyObject>> {
+        self.require_causal("counterfactual")?;
+        let obs = self.assignment_from_map(&observed)?;
+        let interv = self.assignment_from_map(&intervention)?;
+        let result = py.allow_threads(|| {
+            let cm = crate::core::models::CausalModel::new(self.inner.clone());
+            let query_refs: Vec<&str> = query.iter().map(|s| s.as_str()).collect();
+            cm.counterfactual(&obs, &interv, &query_refs)
+        }).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Self::pack_marginals(py, &query, &result)
+    }
+
+    /// Probability of necessity: P(outcome would not have occurred without
+    /// the treatment, given it occurred under the treatment).
+    pub fn probability_of_necessity(
+        &self,
+        py: Python<'_>,
+        outcome: &str,
+        outcome_value: &str,
+        treatment: &str,
+        treatment_value: &str,
+        reference_value: &str,
+    ) -> PyResult<f64> {
+        self.require_causal("probability_of_necessity")?;
+        py.allow_threads(|| {
+            let cm = crate::core::models::CausalModel::new(self.inner.clone());
+            cm.probability_of_necessity(outcome, outcome_value, treatment, treatment_value, reference_value)
+        }).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Probability of sufficiency: P(outcome would have occurred under the
+    /// treatment, given it did not occur under the reference condition).
+    pub fn probability_of_sufficiency(
+        &self,
+        py: Python<'_>,
+        outcome: &str,
+        outcome_value: &str,
+        treatment: &str,
+        treatment_value: &str,
+        reference_value: &str,
+    ) -> PyResult<f64> {
+        self.require_causal("probability_of_sufficiency")?;
+        py.allow_threads(|| {
+            let cm = crate::core::models::CausalModel::new(self.inner.clone());
+            cm.probability_of_sufficiency(outcome, outcome_value, treatment, treatment_value, reference_value)
+        }).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Run the ID algorithm: is P(targets | do(interventions)) identifiable
+    /// from observational data given this graph? Returns (identifiable,
+    /// formula_or_reason).
+    pub fn identify(&self, targets: Vec<String>, interventions: Vec<String>) -> PyResult<(bool, String)> {
+        self.require_causal("identify")?;
+        let cm = crate::core::models::CausalModel::new(self.inner.clone());
+        let target_refs: Vec<&str> = targets.iter().map(|s| s.as_str()).collect();
+        let interv_refs: Vec<&str> = interventions.iter().map(|s| s.as_str()).collect();
+        match cm.identify(&target_refs, &interv_refs).map_err(|e| PyValueError::new_err(e.to_string()))? {
+            crate::core::models::causal_model::types::IdentificationResult::Identifiable(f) => Ok((true, f.formula)),
+            crate::core::models::causal_model::types::IdentificationResult::NotIdentifiable(reason) => Ok((false, reason)),
+        }
+    }
+
     /// Serialize this network (structure + CPDs) to an LMF JSON file at `path`.
     pub fn save(&self, path: &str) -> PyResult<()> {
         self.inner.save_lmf(path).map_err(|e| PyValueError::new_err(e.to_string()))
@@ -169,6 +271,49 @@ impl PyBayesianNetwork {
 }
 
 impl PyBayesianNetwork {
+    /// Enforce the mark_as_causal() contract before any causal operation.
+    /// (CausalModel::new force-marks its network, so without this check the
+    /// safety gate documented on mark_as_causal() would be silently skipped.)
+    fn require_causal(&self, operation: &str) -> PyResult<()> {
+        if self.inner.is_causal() {
+            Ok(())
+        } else {
+            Err(PyValueError::new_err(format!(
+                "Cannot call '{}' on a non-causal model. Call mark_as_causal() first.",
+                operation
+            )))
+        }
+    }
+
+    /// Build an Assignment from a Python dict of {variable_name: state_value}.
+    fn assignment_from_map(&self, map: &HashMap<String, String>) -> PyResult<Assignment> {
+        let mut assign = Assignment::new();
+        for (name, val) in map {
+            let id = self.inner.id_of(name).map_err(|e| PyValueError::new_err(e.to_string()))?;
+            assign.set(id, val.as_str());
+        }
+        Ok(assign)
+    }
+
+    /// Pack an InferenceResult's per-variable marginals into {name: Vec<f64>}.
+    fn pack_marginals(
+        py: Python<'_>,
+        names: &[String],
+        result: &crate::core::inference::InferenceResult,
+    ) -> PyResult<HashMap<String, PyObject>> {
+        let mut out = HashMap::new();
+        for name in names {
+            let factor = result.distributions.get(name).ok_or_else(|| {
+                PyValueError::new_err(format!("No marginal returned for '{}'", name))
+            })?;
+            let values: Vec<f64> = (0..factor.scope().num_entries())
+                .map(|i| factor.value_at(i))
+                .collect();
+            out.insert(name.clone(), values.into_py(py));
+        }
+        Ok(out)
+    }
+
     fn normalize_cpd_input(&self, variable_name: &str, values: &Bound<'_, PyAny>) -> PyResult<Vec<Vec<f64>>> {
         if let Ok(nested) = values.extract::<Vec<Vec<f64>>>() { return Ok(nested); }
         if let Ok(flat) = values.extract::<Vec<f64>>() { return Ok(flat.into_iter().map(|v| vec![v]).collect()); }
