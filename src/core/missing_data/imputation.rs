@@ -183,25 +183,30 @@ impl ImputationEngine {
             let mut xtx = vec![0.0_f64; (n_pred + 1) * (n_pred + 1)];
             let mut xty = vec![0.0_f64; n_pred + 1];
 
+            // `at(r, c)` indexes the row-major (n_pred+1) x (n_pred+1) X'X matrix;
+            // row/column 0 is the intercept term.
+            let dim = n_pred + 1;
+            let at = |r: usize, c: usize| r * dim + c;
+
             for &row_idx in &complete_rows {
                 // Intercept term.
-                xtx[0] += 1.0;
+                xtx[at(0, 0)] += 1.0;
                 xty[0] += result[row_idx][target_j];
                 for p in 0..n_pred {
                     let x_val = result[row_idx][predictors[p]];
-                    xtx[(p + 1) * (n_pred + 1) + 0] += x_val;
-                    xtx[0 * (n_pred + 1) + (p + 1)] += x_val;
+                    xtx[at(p + 1, 0)] += x_val;
+                    xtx[at(0, p + 1)] += x_val;
                     xty[p + 1] += x_val * result[row_idx][target_j];
                     for q in 0..n_pred {
                         let xq = result[row_idx][predictors[q]];
-                        xtx[(p + 1) * (n_pred + 1) + (q + 1)] += x_val * xq;
+                        xtx[at(p + 1, q + 1)] += x_val * xq;
                     }
                 }
             }
 
             // Add regularization.
             for j in 0..=n_pred {
-                xtx[j * (n_pred + 1) + j] += 1e-6;
+                xtx[at(j, j)] += 1e-6;
             }
 
             // Solve for coefficients.
@@ -286,23 +291,27 @@ impl ImputationEngine {
                 let mut xtx = vec![0.0_f64; (n_pred + 1) * (n_pred + 1)];
                 let mut xty = vec![0.0_f64; n_pred + 1];
 
+                // Row-major (n_pred+1) x (n_pred+1) X'X; row/column 0 is the intercept.
+                let dim = n_pred + 1;
+                let at = |r: usize, c: usize| r * dim + c;
+
                 for &row_idx in &complete_rows {
-                    xtx[0] += 1.0;
+                    xtx[at(0, 0)] += 1.0;
                     xty[0] += current.imputed_data[row_idx][target_j];
                     for p in 0..n_pred {
                         let x_val = current.imputed_data[row_idx][predictors[p]];
-                        xtx[(p + 1) * (n_pred + 1) + 0] += x_val;
-                        xtx[0 * (n_pred + 1) + (p + 1)] += x_val;
+                        xtx[at(p + 1, 0)] += x_val;
+                        xtx[at(0, p + 1)] += x_val;
                         xty[p + 1] += x_val * current.imputed_data[row_idx][target_j];
                         for q in 0..n_pred {
-                            xtx[(p + 1) * (n_pred + 1) + (q + 1)]
+                            xtx[at(p + 1, q + 1)]
                                 += x_val * current.imputed_data[row_idx][predictors[q]];
                         }
                     }
                 }
 
                 for j in 0..=n_pred {
-                    xtx[j * (n_pred + 1) + j] += 1e-6;
+                    xtx[at(j, j)] += 1e-6;
                 }
 
                 let dim = n_pred + 1;
@@ -470,9 +479,7 @@ impl ImputationEngine {
                         aug2[oi * (o + 1) + o] = cov_mo[col][oi];
                     }
                     if let Ok(x) = super::mcar_mar::solve_linear_system(&mut aug2, o) {
-                        for oi in 0..o {
-                            beta[col][oi] = x[oi];
-                        }
+                        beta[col][..o].copy_from_slice(&x[..o]);
                     }
                 }
 

@@ -3,6 +3,12 @@ use serde::{Deserialize, Serialize};
 use crate::core::models::bayesian_network::BayesianNetwork;
 
 /// A transition model that can change over time.
+// `Fixed` holds a `BayesianNetwork` inline while the other variants hold `Vec`s,
+// so the variants differ substantially in size. Boxing `Fixed` would shrink the
+// enum but is a breaking change to a public 1.0 type, and these values are
+// constructed once per model rather than in any hot loop — so the allocation the
+// box would add buys nothing. Revisit at the next major version.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransitionModel {
     /// Fixed transition (standard DBN behavior).

@@ -199,10 +199,7 @@ impl UaiFormat {
                 continue;
             }
             let scope_size = parts[0];
-            let scope: Vec<usize> = parts[1..1 + scope_size.min(parts.len() - 1)]
-                .iter()
-                .map(|v| *v)
-                .collect();
+            let scope: Vec<usize> = parts[1..1 + scope_size.min(parts.len() - 1)].to_vec();
             scopes.push(scope);
             idx += 1;
         }
@@ -259,15 +256,14 @@ impl UaiFormat {
 
             for &pidx in &parent_idxs {
                 let pname = format!("X{}", pidx);
-                if network.id_of(&pname).is_ok() && network.id_of(&child_name).is_ok() {
-                    if !network
+                if network.id_of(&pname).is_ok() && network.id_of(&child_name).is_ok()
+                    && !network
                         .edges()
                         .iter()
                         .any(|(f, t)| *f == pname && *t == child_name)
                     {
                         let _ = network.add_edge(&pname, &child_name);
                     }
-                }
             }
 
             let child_var = network.variable(&child_name)?.clone();

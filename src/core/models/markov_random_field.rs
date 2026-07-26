@@ -24,6 +24,12 @@ pub struct MarkovRandomField {
     factors: Vec<PotentialFunction>,
 }
 
+impl Default for MarkovRandomField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MarkovRandomField {
     /// Create a new, empty Markov Random Field.
     pub fn new() -> Self {
@@ -48,9 +54,9 @@ impl MarkovRandomField {
         self.graph.add_node(id);
         self.name_to_id.insert(name.to_string(), id);
         self.variables.insert(id, var);
-        Ok(self.variables.get(&id).ok_or_else(|| LutufiError::InternalError {
+        self.variables.get(&id).ok_or_else(|| LutufiError::InternalError {
             message: format!("MRF inconsistency: variable {:?} just inserted but not found", id),
-        })?)
+        })
     }
 
     /// Add an undirected edge between two variables.

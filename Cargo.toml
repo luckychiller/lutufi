@@ -58,6 +58,16 @@ pollster     = { version = "0.3", optional = true }
 approx    = "0.5"
 rstest    = "0.18"
 criterion = { version = "0.5", features = ["html_reports"] }
+proptest  = "1.4"
+
+# CI runs `cargo clippy --all-targets --all-features -- -D warnings`, so every
+# lint allowed here is a deliberate, documented exception rather than drift.
+[lints.clippy]
+# Index-based loops are the clearest form for row-major matrix indexing and for
+# time-indexed recursions (HMM alpha/beta, Kalman). The index is itself the
+# meaningful quantity; rewriting these as iterator chains obscures the arithmetic
+# and invites off-by-one errors in numerically sensitive code.
+needless_range_loop = "allow"
 
 [features]
 default = []
@@ -133,6 +143,12 @@ path = "tests/unit/causal_tests.rs"
 [[test]]
 name = "unit_missing_data"
 path = "tests/unit/missing_data_tests.rs"
+
+# Compiled by the CI `features` matrix even where no GPU exists; the tests
+# themselves skip at runtime when no adapter is available.
+[[test]]
+name = "unit_gpu_backend"
+path = "tests/unit/gpu_backend_tests.rs"
 
 [[test]]
 name = "integration_inference_unification"

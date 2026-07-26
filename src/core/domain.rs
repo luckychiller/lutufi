@@ -80,8 +80,8 @@ impl Domain {
             Domain::Binary => value == "false" || value == "true",
             Domain::Continuous { lower, upper } => {
                 if let Ok(v) = value.parse::<f64>() {
-                    let above_lower = lower.map_or(true, |l| v >= l);
-                    let below_upper = upper.map_or(true, |u| v <= u);
+                    let above_lower = lower.is_none_or(|l| v >= l);
+                    let below_upper = upper.is_none_or(|u| v <= u);
                     above_lower && below_upper
                 } else {
                     false

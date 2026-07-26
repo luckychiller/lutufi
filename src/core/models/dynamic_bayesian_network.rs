@@ -11,6 +11,12 @@ pub struct DynamicBayesianNetwork {
     transition: BayesianNetwork,
 }
 
+impl Default for DynamicBayesianNetwork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DynamicBayesianNetwork {
     /// Create a new, empty Dynamic Bayesian Network.
     pub fn new() -> Self {

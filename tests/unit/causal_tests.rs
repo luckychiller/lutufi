@@ -187,7 +187,7 @@ mod tests {
 
         let scm = CausalModel::new(bn);
         let p = scm.frontdoor_adjustment("X", "true", "Y", "true", "M").unwrap();
-        assert!(p >= 0.0 && p <= 1.0);
+        assert!((0.0..=1.0).contains(&p));
     }
 
     #[test]

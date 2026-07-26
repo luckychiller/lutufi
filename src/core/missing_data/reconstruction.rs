@@ -373,7 +373,7 @@ impl ReconstructionEngine {
                         }
                     }
                     if shared_dims == 0 { continue; }
-                    dist = dist / shared_dims as f64;
+                    dist /= shared_dims as f64;
 
                     if dist < best_dist {
                         best_dist = dist;

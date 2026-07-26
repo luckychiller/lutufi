@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod roundtrip {
     use super::super::types::*;
     use crate::core::domain::Domain;
     use crate::core::variable::Variable;

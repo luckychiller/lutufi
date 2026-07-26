@@ -19,7 +19,7 @@ pub fn regime_posterior(dbn: &NonStationaryDBN, observations: &[HashMap<String, 
             }
 
             let mut alpha = vec![vec![f64::NEG_INFINITY; n_regimes]; t];
-            for r in 0..n_regimes { alpha[0][r] = initial_regime[r]; }
+            alpha[0][..n_regimes].copy_from_slice(&initial_regime[..n_regimes]);
 
             for step in 1..t {
                 for r in 0..n_regimes {

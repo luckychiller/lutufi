@@ -323,7 +323,7 @@ mod tests {
         let learner = ScoreBasedLearner::new(options);
         let learned_model = learner.hill_climbing(&samples, &[], &[]).unwrap();
         let edge_count = learned_model.graph.edges().len();
-        assert!(edge_count >= 5 && edge_count <= 15);
+        assert!((5..=15).contains(&edge_count));
     }
 
     #[test]
@@ -345,7 +345,7 @@ mod tests {
         let learner = ConstraintBasedLearner::new(options);
         let learned_model = learner.pc_algorithm(&samples).unwrap();
         let edge_count = learned_model.graph.edges().len();
-        assert!(edge_count >= 2 && edge_count <= 15);
+        assert!((2..=15).contains(&edge_count));
         assert!(!learned_model.graph.is_cyclic());
     }
 }

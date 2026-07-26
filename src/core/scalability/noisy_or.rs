@@ -164,7 +164,7 @@ impl NoisyOrFactor {
             let sorted_scope = Scope::new(scope_vars.clone());
             let sorted_idx = crate::core::factor::project_indices(
                 &sorted_indices,
-                &sorted_scope.variable_ids().to_vec(),
+                sorted_scope.variable_ids(),
                 scope.variable_ids(),
                 scope.sizes(),
             )?;

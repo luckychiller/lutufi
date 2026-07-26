@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple, Union, Any, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 import warnings
 
 import numpy as np
@@ -399,6 +400,76 @@ class BayesianNetwork(NetworkModel):
         """
         return self._model.get_states(variable_name)
 
+    def save(self, path: Union[str, Path]) -> None:
+        """Serialize this network (structure + CPDs) to Lutufi's native LMF
+        format at `path`.
+
+        Unlike `to_networkx()` / `lutufi.io.write_graph()`, this preserves
+        full model fidelity — variables, edges, domains, and fitted CPDs —
+        so the exact model can be reloaded with `BayesianNetwork.load()`.
+
+        Args:
+            path: Destination file path (conventionally ``*.lmf``).
+
+        Example:
+            >>> model.save("trained_model.lmf")
+            >>> reloaded = BayesianNetwork.load("trained_model.lmf")
+        """
+        try:
+            self._model.save(str(path))
+        except ValueError as exc:
+            raise LutufiSerializationError(path=str(path), reason=str(exc)) from exc
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "BayesianNetwork":
+        """Load a Bayesian network (structure + CPDs) previously written by
+        `save()` from Lutufi's native LMF format at `path`.
+
+        Args:
+            path: Path to an LMF file written by `save()`.
+
+        Returns:
+            The reconstructed BayesianNetwork, with CPDs intact.
+        """
+        try:
+            rust_model = _RustBayesianNetwork.load(str(path))
+        except ValueError as exc:
+            raise LutufiSerializationError(path=str(path), reason=str(exc)) from exc
+        return cls(rust_model)
+
+    def to_lmf_json(self) -> str:
+        """Serialize this network (structure + CPDs) to an LMF JSON string,
+        without touching the filesystem.
+
+        Useful for embedding a trained model directly in another artifact
+        (e.g. a config blob, a database row, or bundled alongside other
+        model weights) instead of shipping a separate ``.lmf`` file.
+
+        Returns:
+            The LMF document as a JSON string.
+        """
+        try:
+            return self._model.to_lmf_json()
+        except ValueError as exc:
+            raise LutufiSerializationError(reason=str(exc)) from exc
+
+    @classmethod
+    def from_lmf_json(cls, json: str) -> "BayesianNetwork":
+        """Reconstruct a BayesianNetwork from an LMF JSON string produced by
+        `to_lmf_json()`.
+
+        Args:
+            json: An LMF document as a JSON string.
+
+        Returns:
+            The reconstructed BayesianNetwork, with CPDs intact.
+        """
+        try:
+            rust_model = _RustBayesianNetwork.from_lmf_json(json)
+        except ValueError as exc:
+            raise LutufiSerializationError(reason=str(exc)) from exc
+        return cls(rust_model)
+
     @classmethod
     def builder(cls) -> "BayesianNetworkBuilder":
         """Create a fluent builder for constructing a BayesianNetwork.
@@ -619,6 +690,98 @@ class BayesianNetwork(NetworkModel):
     def is_causal(self) -> bool:
         """Whether this model has been marked as causal."""
         return self._model.is_causal()
+
+    # ─── Causal operations (require mark_as_causal()) ────────────────────
+
+    def do(self, intervention: Dict[str, str]) -> "BayesianNetwork":
+        """Apply Pearl's do-operator and return the interventional network.
+
+        Removes all incoming edges to each intervened variable and fixes it
+        to the given value (graph mutilation). The returned network answers
+        interventional queries: querying it is querying P(· | do(...)).
+
+        Args:
+            intervention: Mapping of variable name -> forced state value.
+
+        Returns:
+            A new BayesianNetwork representing the mutilated model.
+
+        Example:
+            >>> model.mark_as_causal()
+            >>> intervened = model.do({"Sprinkler": "T"})
+        """
+        rust = _call_rust(self._model.do_operator, intervention)
+        return BayesianNetwork(rust, name=f"{self.name}|do")
+
+    def causal_query(
+        self, targets: List[str], interventions: Dict[str, str]
+    ) -> Dict[str, List[float]]:
+        """Compute P(targets | do(interventions)).
+
+        Unlike conditioning, this answers "what would happen if we *forced*
+        these variables to these values" — correlation vs. causation.
+
+        Args:
+            targets: Variables whose interventional marginals to compute.
+            interventions: Mapping of variable name -> forced state value.
+
+        Returns:
+            Dict mapping each target name to its marginal probability list
+            (aligned with get_states(target)).
+        """
+        return _call_rust(self._model.causal_query, targets, interventions)
+
+    def counterfactual(
+        self,
+        observed: Dict[str, str],
+        intervention: Dict[str, str],
+        query: List[str],
+    ) -> Dict[str, List[float]]:
+        """Counterfactual query: given `observed` evidence, what would the
+        `query` variables look like under `intervention`?
+
+        Returns:
+            Dict mapping each query variable to its marginal probability list.
+        """
+        return _call_rust(self._model.counterfactual, observed, intervention, query)
+
+    def probability_of_necessity(
+        self, outcome: str, outcome_value: str, treatment: str,
+        treatment_value: str, reference_value: str,
+    ) -> float:
+        """Pearl's probability of necessity (PN): the probability the outcome
+        would NOT have occurred had the treatment been `reference_value`
+        instead, given that it did occur under `treatment_value`.
+        """
+        return _call_rust(
+            self._model.probability_of_necessity,
+            outcome, outcome_value, treatment, treatment_value, reference_value,
+        )
+
+    def probability_of_sufficiency(
+        self, outcome: str, outcome_value: str, treatment: str,
+        treatment_value: str, reference_value: str,
+    ) -> float:
+        """Pearl's probability of sufficiency (PS): the probability the
+        outcome WOULD have occurred under `treatment_value`, given that it
+        did not occur under `reference_value`.
+        """
+        return _call_rust(
+            self._model.probability_of_sufficiency,
+            outcome, outcome_value, treatment, treatment_value, reference_value,
+        )
+
+    def identify(
+        self, targets: List[str], interventions: List[str]
+    ) -> Tuple[bool, str]:
+        """Run the ID algorithm: is P(targets | do(interventions))
+        identifiable from observational data given this graph structure?
+
+        Returns:
+            (identifiable, detail) — `detail` is the identification formula
+            when identifiable, or the reason (hedge) when not.
+        """
+        return _call_rust(self._model.identify, targets, interventions)
 
     def d_separated(self, a: str, b: str, given: Optional[List[str]] = None) -> bool:
         """Test whether two variables are d-separated given a set of observed variables.

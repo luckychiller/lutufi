@@ -207,7 +207,7 @@ pub fn mar_test_logistic(
                 }
             }
 
-            let logit = if linear > 30.0 { 30.0 } else if linear < -30.0 { -30.0 } else { linear };
+            let logit = linear.clamp(-30.0, 30.0);
             let p = 1.0 / (1.0 + (-logit).exp());
             let y = 1.0_f64; // response is always 1 (missing)
 
@@ -220,14 +220,17 @@ pub fn mar_test_logistic(
                 }
             }
 
-            // Hessian contributions.
+            // Hessian contributions. `at(r, c)` indexes the row-major
+            // (n_pred+1) x (n_pred+1) matrix; row/column 0 is the intercept term.
+            let dim = n_pred + 1;
+            let at = |r: usize, c: usize| r * dim + c;
             let w = p * (1.0 - p);
-            hessian[0 * (n_pred + 1) + 0] += -w;
+            hessian[at(0, 0)] += -w;
             for (j, val) in row.iter().enumerate() {
                 if j == target_idx { continue; }
                 if let Some(v) = val {
-                    hessian[(j + 1) * (n_pred + 1) + 0] += -w * v;
-                    hessian[0 * (n_pred + 1) + (j + 1)] += -w * v;
+                    hessian[at(j + 1, 0)] += -w * v;
+                    hessian[at(0, j + 1)] += -w * v;
                 }
             }
             for (j1, v1) in row.iter().enumerate() {
@@ -235,7 +238,7 @@ pub fn mar_test_logistic(
                 for (j2, v2) in row.iter().enumerate() {
                     if j2 == target_idx { continue; }
                     if let (Some(x1), Some(x2)) = (v1, v2) {
-                        hessian[(j1 + 1) * (n_pred + 1) + (j2 + 1)] += -w * x1 * x2;
+                        hessian[at(j1 + 1, j2 + 1)] += -w * x1 * x2;
                     }
                 }
             }
@@ -280,14 +283,14 @@ pub fn mar_test_logistic(
                 linear += coefficients[j + 1] * v;
             }
         }
-        let logit = if linear > 30.0 { 30.0 } else if linear < -30.0 { -30.0 } else { linear };
+        let logit = linear.clamp(-30.0, 30.0);
         let p = 1.0 / (1.0 + (-logit).exp());
-        let p_clamped = p.max(1e-15).min(1.0 - 1e-15);
+        let p_clamped = p.clamp(1e-15, 1.0 - 1e-15);
         ll_full += p_clamped.ln();
 
         // Null model: intercept only.
         let null_p = null_count as f64 / n_rows.max(1) as f64;
-        let null_p_clamped = null_p.max(1e-15).min(1.0 - 1e-15);
+        let null_p_clamped = null_p.clamp(1e-15, 1.0 - 1e-15);
         ll_null += null_p_clamped.ln();
     }
 

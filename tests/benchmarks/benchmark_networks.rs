@@ -43,7 +43,7 @@ pub fn generate_1m_edge_benchmark_network(
         .collect();
 
     for name in &node_names {
-        if let Err(_) = bn.cpd(name) {
+        if bn.cpd(name).is_err() {
             let var = bn.variable(name)?;
             let parents = bn.graph.parents(&var.id());
             let parent_vars: Vec<&Variable> = parents.iter()
@@ -68,7 +68,7 @@ pub fn generate_1m_edge_benchmark_network(
                 let cpd = ConditionalProbabilityTable::from_values(
                     var, &parent_vars, values,
                 )?;
-                bn.set_cpd(&name, cpd)?;
+                bn.set_cpd(name, cpd)?;
             }
         }
     }
@@ -104,7 +104,7 @@ pub fn generate_sparse_benchmark_network(
 
     for i in 0..num_nodes {
         let name = format!("V{}", i);
-        if let Err(_) = bn.cpd(&name) {
+        if bn.cpd(&name).is_err() {
             let var = bn.variable(&name)?;
             let parents = bn.graph.parents(&var.id());
             let parent_vars: Vec<&Variable> = parents.iter()
@@ -183,5 +183,5 @@ fn test_memory_stress_report() {
 fn test_1m_edge_benchmark_constructs() {
     let bn = generate_1m_edge_benchmark_network(20, 42).unwrap();
     assert!(bn.nodes().len() == 20);
-    assert!(bn.edges().len() > 0);
+    assert!(!bn.edges().is_empty());
 }

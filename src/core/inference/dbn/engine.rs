@@ -42,7 +42,7 @@ impl DBNInferenceEngine {
     pub fn dbn(&self) -> &DynamicBayesianNetwork { &self.dbn }
 
     fn validate_evidence_step(&self, evidence: &HashMap<String, String>) -> LutufiResult<()> {
-        for (name, _) in evidence {
+        for name in evidence.keys() {
             if self.dbn.prior().id_of(name).is_err() {
                 return Err(LutufiError::VariableNotFound {
                     name: name.clone(),

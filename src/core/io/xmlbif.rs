@@ -70,7 +70,7 @@ impl XmlBifFormat {
         }
 
         let order =
-            network.topological_order().unwrap_or_else(|_| node_names.iter().map(|s| *s).collect());
+            network.topological_order().unwrap_or_else(|_| node_names.to_vec());
         for var_name in &order {
             let cpt = match network.cpd(var_name) {
                 Ok(c) => c,
@@ -153,12 +153,10 @@ impl XmlBifFormat {
                             current_var_states.clear();
                             current_var_name.clear();
                             let mut attr_type = "discrete".to_string();
-                            for attr in e.attributes() {
-                                if let Ok(a) = attr {
-                                    if a.key.as_ref() == b"TYPE" {
-                                        if let Ok(s) = std::str::from_utf8(&a.value) {
-                                            attr_type = s.to_string();
-                                        }
+                            for a in e.attributes().flatten() {
+                                if a.key.as_ref() == b"TYPE" {
+                                    if let Ok(s) = std::str::from_utf8(&a.value) {
+                                        attr_type = s.to_string();
                                     }
                                 }
                             }
@@ -175,25 +173,20 @@ impl XmlBifFormat {
                 }
                 Ok(Event::Empty(ref e)) => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    match tag.as_str() {
-                        "VARIABLE" => {
-                            let mut attr_type = "discrete".to_string();
-                            for attr in e.attributes() {
-                                if let Ok(a) = attr {
-                                    if a.key.as_ref() == b"TYPE" {
-                                        if let Ok(s) = std::str::from_utf8(&a.value) {
-                                            attr_type = s.to_string();
-                                        }
-                                    }
+                    if tag.as_str() == "VARIABLE" {
+                        let mut attr_type = "discrete".to_string();
+                        for a in e.attributes().flatten() {
+                            if a.key.as_ref() == b"TYPE" {
+                                if let Ok(s) = std::str::from_utf8(&a.value) {
+                                    attr_type = s.to_string();
                                 }
                             }
-                            var_infos.push((
-                                String::new(),
-                                Vec::new(),
-                                attr_type == "continuous",
-                            ));
                         }
-                        _ => {}
+                        var_infos.push((
+                            String::new(),
+                            Vec::new(),
+                            attr_type == "continuous",
+                        ));
                     }
                 }
                 Ok(Event::Text(ref e)) => {
@@ -278,15 +271,14 @@ impl XmlBifFormat {
                 continue;
             }
             for parent in parents {
-                if network.id_of(parent).is_ok() && network.id_of(child).is_ok() {
-                    if !network
+                if network.id_of(parent).is_ok() && network.id_of(child).is_ok()
+                    && !network
                         .edges()
                         .iter()
                         .any(|(f, t)| f == parent && t == child)
                     {
                         let _ = network.add_edge(parent, child);
                     }
-                }
             }
             let child_var = network.variable(child)?.clone();
             let parent_vars: Vec<&Variable> = parents

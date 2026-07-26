@@ -79,3 +79,88 @@ fn test_mcmc_asia() {
     let mcmc_asia = result.marginals.get(&asia_id).unwrap();
     assert_abs_diff_eq!(jt_asia.value_at(1), mcmc_asia.value_at(1), epsilon = 0.08);
 }
+
+/// A fixed seed must produce identical results, run to run and in a fresh
+/// process.
+///
+/// This did not hold before: the Gibbs scan order came from iterating a
+/// `HashMap`, and Rust randomizes that ordering per process. `seed: Some(42)`
+/// therefore promised reproducibility it could not deliver — a serious problem
+/// for a library whose users publish these numbers. The scan order is now sorted
+/// by `VariableId`, and each chain derives its own stream from the master seed so
+/// that running chains in parallel cannot perturb the result either.
+#[test]
+fn seeded_mcmc_is_reproducible() {
+    let bn = build_asia_network();
+    let evidence = Assignment::new();
+
+    let sample_once = || {
+        let fg = FactorGraph::from_bayesian_network(&bn).unwrap();
+        let options = MCMCOptions {
+            n_samples: 400,
+            burn_in: 100,
+            thin: 1,
+            chains: 4,
+            seed: Some(20260725),
+            method: MCMCMethod::Gibbs,
+        };
+        MCMCEngine::new(fg, options).gibbs_sample(&evidence).unwrap()
+    };
+
+    let first = sample_once();
+    let second = sample_once();
+
+    for (var_id, marginal) in &first.marginals {
+        let other = second.marginals.get(var_id).expect("same variables");
+        for i in 0..marginal.scope().num_entries() {
+            assert_eq!(
+                marginal.value_at(i).to_bits(),
+                other.value_at(i).to_bits(),
+                "seeded run differed for {var_id} at state {i}: {} vs {}",
+                marginal.value_at(i),
+                other.value_at(i),
+            );
+        }
+    }
+}
+
+/// Results must not depend on how many threads rayon happens to use, since
+/// chains now run in parallel.
+#[test]
+fn seeded_mcmc_is_thread_count_independent() {
+    let bn = build_asia_network();
+    let evidence = Assignment::new();
+
+    let sample_with = |threads: usize| {
+        let fg = FactorGraph::from_bayesian_network(&bn).unwrap();
+        let options = MCMCOptions {
+            n_samples: 300,
+            burn_in: 100,
+            thin: 1,
+            chains: 4,
+            seed: Some(7),
+            method: MCMCMethod::Gibbs,
+        };
+        let engine = MCMCEngine::new(fg, options);
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap()
+            .install(|| engine.gibbs_sample(&evidence).unwrap())
+    };
+
+    let reference = sample_with(1);
+    for threads in [2usize, 4] {
+        let result = sample_with(threads);
+        for (var_id, marginal) in &reference.marginals {
+            let other = result.marginals.get(var_id).expect("same variables");
+            for i in 0..marginal.scope().num_entries() {
+                assert_eq!(
+                    marginal.value_at(i).to_bits(),
+                    other.value_at(i).to_bits(),
+                    "result differed at {threads} threads for {var_id} state {i}"
+                );
+            }
+        }
+    }
+}

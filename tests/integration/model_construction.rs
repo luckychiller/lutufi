@@ -187,8 +187,8 @@ mod asia_network_tests {
         let blanket = bn.markov_blanket("Dyspnoea").unwrap();
         // Dyspnoea's blanket: TbOrCa (parent), Bronchitis (parent)
         // Dyspnoea has no children in this network.
-        assert!(blanket.iter().any(|&n| n == "TbOrCa"));
-        assert!(blanket.iter().any(|&n| n == "Bronchitis"));
+        assert!(blanket.contains(&"TbOrCa"));
+        assert!(blanket.contains(&"Bronchitis"));
         assert_eq!(blanket.len(), 2);
     }
 

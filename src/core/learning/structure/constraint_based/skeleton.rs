@@ -96,13 +96,13 @@ impl SkeletonDiscovery {
         let head = items[0].clone();
         let tail = &items[1..];
 
-        for mut subset in self.get_subsets(&tail.iter().map(|s| s.clone()).collect::<Vec<_>>(), k - 1) {
+        for mut subset in self.get_subsets(tail, k - 1) {
             subset.insert(0, head.clone());
             result.push(subset);
         }
 
         result.extend(self.get_subsets(
-            &tail.iter().map(|s| s.clone()).collect::<Vec<_>>(),
+            tail,
             k,
         ));
         result

@@ -42,13 +42,13 @@ pub(crate) fn gpu_accumulate_counts(
     struct CountParamsRaw { num_rows: u32, num_entries: u32, row_stride: u32 }
     let cparams = CountParamsRaw { num_rows: data_rows.len() as u32, num_entries: scope_num_entries as u32, row_stride: row_stride as u32 };
     let cparam_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("CountParams"), contents: bytemuck::cast_slice(&[cparams]), usage: wgpu::BufferUsages::UNIFORM,
+        label: Some("CountParams"), contents: bytemuck::cast_slice(&[cparams]), usage: wgpu::BufferUsages::STORAGE,
     });
 
     backend.run_compute(
         shaders::PARAM_COUNT_ATOMIC_SHADER, "main",
         &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ],
@@ -57,7 +57,7 @@ pub(crate) fn gpu_accumulate_counts(
             wgpu::BindGroupEntry { binding: 1, resource: data_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 2, resource: counts_buf.as_entire_binding() },
         ],
-        ((data_rows.len() as u32 + 63) / 64, 1, 1),
+        ((data_rows.len() as u32).div_ceil(64), 1, 1),
     )?;
 
     let res_u32 = backend.read_buffer_u32(&counts_buf, scope_num_entries)?;

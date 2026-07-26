@@ -26,19 +26,18 @@ impl CsvExport {
             let scope = factor.scope();
             let n = scope.num_entries();
 
-            let states: Vec<String> = if n == 2 {
-                vec!["false".to_string(), "true".to_string()]
-            } else {
-                (0..n).map(|i| i.to_string()).collect()
-            };
-
+            // Use the model's own state labels. The previous implementation
+            // assumed any two-state variable was `false`/`true`, which silently
+            // relabelled every binary domain that named its states otherwise
+            // ("no"/"yes", "absent"/"present", "low"/"high") — corrupting the
+            // exported file rather than failing. `state_label` falls back to the
+            // index when labels are genuinely unavailable, which is honest.
             for i in 0..n {
                 let prob = factor.value_at(i);
-                let state = states.get(i).cloned().unwrap_or_else(|| i.to_string());
                 out.push_str(&format!(
                     "{},{},{}\n",
                     var_name,
-                    state,
+                    result.state_label(var_name, i),
                     format_prob(prob)
                 ));
             }
@@ -139,12 +138,20 @@ mod tests {
         variable::VariableId,
     };
 
-    fn make_mock_result() -> InferenceResult {
+    fn make_mock_result(states: Option<Vec<&str>>) -> InferenceResult {
         let mut distributions = HashMap::new();
         let scope = Scope::from_ids_and_sizes(vec![VariableId::new()], vec![2]);
         let factor =
             TabularFactor::from_values(scope, vec![0.9, 0.1]).unwrap();
         distributions.insert("Smoking".to_string(), factor);
+
+        let mut state_names = HashMap::new();
+        if let Some(states) = states {
+            state_names.insert(
+                "Smoking".to_string(),
+                states.into_iter().map(|s| s.to_string()).collect(),
+            );
+        }
 
         InferenceResult {
             variables: vec!["Smoking".to_string()],
@@ -154,12 +161,13 @@ mod tests {
             algorithm_used: Algorithm::VariableElimination,
             computation_time: Duration::from_millis(42),
             diagnostics: Diagnostics::None,
+            state_names,
         }
     }
 
     #[test]
     fn test_csv_export_contains_header() {
-        let result = make_mock_result();
+        let result = make_mock_result(Some(vec!["no", "yes"]));
         let csv = CsvExport::export_inference_result(&result).unwrap();
         assert!(csv.contains("variable,state,probability"));
         assert!(csv.contains("Smoking"));
@@ -169,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_csv_export_metadata() {
-        let result = make_mock_result();
+        let result = make_mock_result(Some(vec!["no", "yes"]));
         let csv = CsvExport::export_inference_result(&result).unwrap();
         assert!(csv.contains("Variable Elimination"));
         assert!(csv.contains("42"));
@@ -177,12 +185,39 @@ mod tests {
 
     #[test]
     fn test_csv_export_file() {
-        let result = make_mock_result();
+        let result = make_mock_result(Some(vec!["no", "yes"]));
         let tmp = std::env::temp_dir().join("test_result.csv");
         CsvExport::export_inference_to_file(&result, &tmp).unwrap();
         let content = std::fs::read_to_string(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
         assert!(content.contains("Smoking"));
+    }
+
+    /// The regression this fix exists for: a binary variable whose states are
+    /// named anything other than `false`/`true` used to be exported under those
+    /// invented labels, silently mislabelling the file.
+    #[test]
+    fn csv_export_uses_real_state_names_not_false_true() {
+        let result = make_mock_result(Some(vec!["no", "yes"]));
+        let csv = CsvExport::export_inference_result(&result).unwrap();
+
+        assert!(csv.contains("Smoking,no,0.9"), "expected real labels:\n{csv}");
+        assert!(csv.contains("Smoking,yes,0.1"), "expected real labels:\n{csv}");
+        assert!(
+            !csv.contains("false") && !csv.contains("true"),
+            "state names were invented rather than taken from the model:\n{csv}"
+        );
+    }
+
+    /// When labels genuinely are not available, fall back to indices rather than
+    /// guessing. An index is honest; `false`/`true` is a claim that may be wrong.
+    #[test]
+    fn csv_export_falls_back_to_indices_when_labels_unknown() {
+        let result = make_mock_result(None);
+        let csv = CsvExport::export_inference_result(&result).unwrap();
+
+        assert!(csv.contains("Smoking,0,0.9"), "expected index fallback:\n{csv}");
+        assert!(csv.contains("Smoking,1,0.1"), "expected index fallback:\n{csv}");
     }
 
     #[test]

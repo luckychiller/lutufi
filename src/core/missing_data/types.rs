@@ -65,7 +65,7 @@ impl MissingDataPattern {
 
     /// Check if a specific row-variable cell is missing.
     pub fn is_missing(&self, var_id: &VariableId, row: usize) -> bool {
-        self.missing_by_variable.get(var_id).map_or(false, |s| s.contains(&row))
+        self.missing_by_variable.get(var_id).is_some_and(|s| s.contains(&row))
     }
 }
 

@@ -22,6 +22,12 @@ pub struct BayesianNetwork {
     is_causal: bool,
 }
 
+impl Default for BayesianNetwork {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BayesianNetwork {
     /// Create a new, empty Bayesian Network.
     pub fn new() -> Self {

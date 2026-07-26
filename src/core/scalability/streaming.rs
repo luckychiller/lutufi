@@ -75,7 +75,7 @@ impl StreamingDBNEngine {
                         for val in 0..domain_size {
                             let mut assignment = Assignment::new();
                             assignment.set_discrete(*id, val)?;
-                            if let Some(_pred) = prev_belief.log_value_at(0 as usize).into() {
+                            if let Some(_pred) = prev_belief.log_value_at(0_usize).into() {
                             }
                         }
                     }

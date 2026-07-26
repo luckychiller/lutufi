@@ -25,7 +25,7 @@ struct GpuFactorParams {
     map_b: array<i32, 8>,
 };
 
-@group(0) @binding(0) var<uniform> params: GpuFactorParams;
+@group(0) @binding(0) var<storage, read> params: GpuFactorParams;
 @group(0) @binding(1) var<storage, read> a_data: array<f32>;
 @group(0) @binding(2) var<storage, read> b_data: array<f32>;
 @group(0) @binding(3) var<storage, read_write> result_data: array<f32>;
@@ -82,7 +82,7 @@ struct GpuMarginalizeParams {
     strides_a_sum: array<u32, 8>,
 };
 
-@group(0) @binding(0) var<uniform> params: GpuMarginalizeParams;
+@group(0) @binding(0) var<storage, read> params: GpuMarginalizeParams;
 @group(0) @binding(1) var<storage, read> a_data: array<f32>;
 @group(0) @binding(2) var<storage, read_write> result_data: array<f32>;
 
@@ -124,13 +124,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 ";
 
+// NOT WIRED. Fused batch dispatch is a planned optimization; `gpu_batch_multiply`
+// currently issues one dispatch per pair. This WGSL has never been executed and is
+// therefore unverified — treat it as a draft, not as working code.
 #[cfg(feature = "gpu")]
+#[allow(dead_code)]
 pub(crate) const BATCH_MULTIPLY_SHADER: &str = "
 struct BatchHeader {
     num_pairs: u32,
     max_entries: u32,
 };
-@group(0) @binding(0) var<uniform> header: BatchHeader;
+@group(0) @binding(0) var<storage, read> header: BatchHeader;
 @group(0) @binding(1) var<storage, read> offsets: array<u32>;
 @group(0) @binding(2) var<storage, read> params: array<u32>;
 @group(0) @binding(3) var<storage, read> a_data: array<f32>;
@@ -184,14 +188,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 ";
 
+// NOT WIRED — see the note on `BATCH_MULTIPLY_SHADER`. Unverified draft.
 #[cfg(feature = "gpu")]
+#[allow(dead_code)]
 pub(crate) const BATCH_MARGINALIZE_SHADER: &str = "
 struct BatchMargHeader {
     num_pairs: u32,
     max_res_entries: u32,
     max_sum_entries: u32,
 };
-@group(0) @binding(0) var<uniform> header: BatchMargHeader;
+@group(0) @binding(0) var<storage, read> header: BatchMargHeader;
 @group(0) @binding(1) var<storage, read> offsets: array<u32>;
 @group(0) @binding(2) var<storage, read> params: array<u32>;
 @group(0) @binding(3) var<storage, read> a_data: array<f32>;
@@ -267,7 +273,7 @@ struct GibbsParams {
     num_factors: u32,
     flat_idx_stride: u32,
 };
-@group(0) @binding(0) var<uniform> params: GibbsParams;
+@group(0) @binding(0) var<storage, read> params: GibbsParams;
 @group(0) @binding(1) var<storage, read> factor_data: array<f32>;
 @group(0) @binding(2) var<storage, read> factor_meta: array<u32>;
 @group(0) @binding(3) var<storage, read_write> log_probs: array<f32>;
@@ -301,7 +307,7 @@ struct ChainStepParams {
     num_vars: u32,
     num_factors: u32,
 };
-@group(0) @binding(0) var<uniform> params: ChainStepParams;
+@group(0) @binding(0) var<storage, read> params: ChainStepParams;
 @group(0) @binding(1) var<storage, read_write> chain_states: array<u32>;
 @group(0) @binding(2) var<storage, read> factor_data: array<f32>;
 @group(0) @binding(3) var<storage, read> factor_meta: array<u32>;
@@ -374,14 +380,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 ";
 
+// NOT WIRED. Superseded by `PARAM_COUNT_ATOMIC_SHADER`, which is what
+// `gpu_accumulate_counts` actually dispatches. Kept as the non-atomic reference
+// variant; unverified.
 #[cfg(feature = "gpu")]
+#[allow(dead_code)]
 pub(crate) const PARAM_COUNT_SHADER: &str = "
 struct CountParams {
     num_rows: u32,
     num_entries: u32,
     row_stride: u32,
 };
-@group(0) @binding(0) var<uniform> params: CountParams;
+@group(0) @binding(0) var<storage, read> params: CountParams;
 @group(0) @binding(1) var<storage, read> data_rows: array<f32>;
 @group(0) @binding(2) var<storage, read_write> counts: array<f32>;
 
@@ -403,7 +413,7 @@ struct CountParams {
     num_entries: u32,
     row_stride: u32,
 };
-@group(0) @binding(0) var<uniform> params: CountParams;
+@group(0) @binding(0) var<storage, read> params: CountParams;
 @group(0) @binding(1) var<storage, read> data_rows: array<f32>;
 @group(0) @binding(2) var<storage, read_write> counts: array<atomic<u32>>;
 

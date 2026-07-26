@@ -7,7 +7,9 @@ use crate::core::{
     variable::VariableId,
 };
 use super::scope::Scope;
-use super::utils::{multi_index_from_flat, project_indices, log_sum_exp};
+use super::utils::{
+    broadcast_strides, log_sum_exp, multi_index_from_flat, project_indices, StridedOdometer,
+};
 
 /// Trait representing a factor in a probabilistic graphical model.
 pub trait Factor {
@@ -161,13 +163,44 @@ impl TabularFactor {
         let new_vars: Vec<VariableId> = new_vars_set.keys().cloned().collect();
         let new_sizes: Vec<usize> = new_vars_set.values().cloned().collect();
         let new_scope = Scope { variables: new_vars, sizes: new_sizes };
-        let mut new_log_table = Vec::with_capacity(new_scope.num_entries());
+        let n_out = new_scope.num_entries();
 
-        for i in 0..new_scope.num_entries() {
-            let combined_indices = multi_index_from_flat(i, new_scope.sizes());
-            let idx_self = project_indices(&combined_indices, new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes())?;
-            let idx_other = project_indices(&combined_indices, new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes())?;
-            new_log_table.push(self.log_value_at(idx_self) + other.log_value_at(idx_other));
+        // Resolve each operand's stride along every output axis once, up front.
+        // The previous implementation rebuilt a multi-index vector and searched
+        // for each variable's position on every single output element, which made
+        // the product O(n_out * n_vars) in allocations and lookups. These are the
+        // same numbers, computed once.
+        let strides_self = broadcast_strides(
+            new_scope.variable_ids(), self_scope.variable_ids(), self_scope.sizes());
+        let strides_other = broadcast_strides(
+            new_scope.variable_ids(), other_scope.variable_ids(), other_scope.sizes());
+
+        let mut new_log_table = vec![0.0f64; n_out];
+        let mut odometer = StridedOdometer::new(new_scope.sizes());
+        let strides: [&[usize]; 2] = [&strides_self, &strides_other];
+        let mut offsets = [0usize, 0usize];
+
+        // Dense/dense is the overwhelmingly common case and the one worth
+        // specializing: it reads straight from two slices with no branching and
+        // no hashing in the loop body.
+        match (self, other) {
+            (
+                TabularFactor::Dense { log_table: a, .. },
+                TabularFactor::Dense { log_table: b, .. },
+            ) => {
+                for out in new_log_table.iter_mut() {
+                    *out = a[offsets[0]] + b[offsets[1]];
+                    odometer.step(&strides, &mut offsets);
+                }
+            }
+            _ => {
+                // At least one operand is sparse; `log_value_at` handles the
+                // lookup and the implicit -inf default.
+                for out in new_log_table.iter_mut() {
+                    *out = self.log_value_at(offsets[0]) + other.log_value_at(offsets[1]);
+                    odometer.step(&strides, &mut offsets);
+                }
+            }
         }
 
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
@@ -200,10 +233,20 @@ impl TabularFactor {
         let new_scope = Scope { variables: remaining_vars, sizes: remaining_sizes };
         let mut new_log_table = vec![f64::NEG_INFINITY; new_scope.num_entries()];
 
+        // Walk the input table in flat order (so reads are sequential) while
+        // tracking the corresponding output offset incrementally. Summed-out
+        // axes get stride 0, so several input cells map to the same output cell
+        // — which is precisely the reduction.
+        let out_strides = broadcast_strides(
+            current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes());
+        let mut odometer = StridedOdometer::new(current_scope.sizes());
+        let strides: [&[usize]; 1] = [&out_strides];
+        let mut offsets = [0usize];
+
         for i in 0..current_scope.num_entries() {
-            let full_indices = multi_index_from_flat(i, current_scope.sizes());
-            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes())?;
-            new_log_table[new_idx] = log_sum_exp(new_log_table[new_idx], self.log_value_at(i));
+            let acc = &mut new_log_table[offsets[0]];
+            *acc = log_sum_exp(*acc, self.log_value_at(i));
+            odometer.step(&strides, &mut offsets);
         }
 
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
@@ -231,10 +274,18 @@ impl TabularFactor {
         let new_scope = Scope { variables: remaining_vars, sizes: remaining_sizes };
         let mut new_log_table = vec![f64::NEG_INFINITY; new_scope.num_entries()];
 
+        // Identical traversal to `marginalize_internal`, reducing with max
+        // instead of log-sum-exp.
+        let out_strides = broadcast_strides(
+            current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes());
+        let mut odometer = StridedOdometer::new(current_scope.sizes());
+        let strides: [&[usize]; 1] = [&out_strides];
+        let mut offsets = [0usize];
+
         for i in 0..current_scope.num_entries() {
-            let full_indices = multi_index_from_flat(i, current_scope.sizes());
-            let new_idx = project_indices(&full_indices, current_scope.variable_ids(), new_scope.variable_ids(), new_scope.sizes())?;
-            new_log_table[new_idx] = new_log_table[new_idx].max(self.log_value_at(i));
+            let acc = &mut new_log_table[offsets[0]];
+            *acc = acc.max(self.log_value_at(i));
+            odometer.step(&strides, &mut offsets);
         }
 
         Ok(TabularFactor::Dense { scope: new_scope, log_table: new_log_table })
@@ -248,7 +299,7 @@ impl TabularFactor {
         let mut fixed_values = Vec::new();
 
         for (i, &var_id) in current_scope.variable_ids().iter().enumerate() {
-            if let Some(val_idx) = assignment.get_discrete(&var_id).ok() {
+            if let Ok(val_idx) = assignment.get_discrete(&var_id) {
                 fixed_values.push((i, val_idx));
             } else {
                 remaining_vars.push(var_id);

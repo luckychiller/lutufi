@@ -3,6 +3,7 @@
 //! Provides MLE, Bayesian estimation (Dirichlet), and EM algorithm.
 
 use std::collections::HashMap;
+use rayon::prelude::*;
 use crate::core::{
     error::{LutufiError, LutufiResult},
     models::bayesian_network::BayesianNetwork,
@@ -214,7 +215,7 @@ impl DataCollector {
 
     /// Normalize matrix with specified smoothing method.
     fn normalize_matrix(
-        matrix: &mut Vec<Vec<f64>>,
+        matrix: &mut [Vec<f64>],
         smoothing: SmoothingMethod,
         alpha: f64,
         num_total_configs: usize,
@@ -262,16 +263,21 @@ fn get_var<'a>(model: &'a BayesianNetwork, id: &VariableId) -> LutufiResult<&'a 
 }
 
 impl ParameterLearner {
-    /// Estimate parameters for a single node.
-    pub fn estimate_node(
-        model: &mut BayesianNetwork,
+    /// Compute one node's CPD without modifying the model.
+    ///
+    /// Splitting the read-only computation from the write is what allows nodes to
+    /// be estimated in parallel: counting is independent per node, but
+    /// `set_cpd` needs exclusive access to the model.
+    fn compute_node_cpd(
+        model: &BayesianNetwork,
         node_name: &str,
         data: &[HashMap<String, String>],
-        options: ParameterLearningOptions,
-    ) -> LutufiResult<()> {
+        options: &ParameterLearningOptions,
+    ) -> LutufiResult<crate::core::factor::ConditionalProbabilityTable> {
         let (counts, scope, child_id) = DataCollector::collect_counts(model, node_name, data)?;
         let mut matrix = DataCollector::build_matrix(model, child_id, &counts, &scope)?;
-        DataCollector::normalize_matrix(&mut matrix, options.smoothing, options.alpha, scope.num_entries());
+        DataCollector::normalize_matrix(
+            &mut matrix, options.smoothing, options.alpha, scope.num_entries());
 
         let child_var = get_var(model, &child_id)?;
         let parents = model.graph.parents(&child_id);
@@ -280,7 +286,18 @@ impl ParameterLearner {
             .map(|id| get_var(model, id))
             .collect::<LutufiResult<Vec<_>>>()?;
 
-        let cpd = crate::core::factor::ConditionalProbabilityTable::from_values(child_var, &parent_vars, matrix)?;
+        crate::core::factor::ConditionalProbabilityTable::from_values(
+            child_var, &parent_vars, matrix)
+    }
+
+    /// Estimate parameters for a single node.
+    pub fn estimate_node(
+        model: &mut BayesianNetwork,
+        node_name: &str,
+        data: &[HashMap<String, String>],
+        options: ParameterLearningOptions,
+    ) -> LutufiResult<()> {
+        let cpd = Self::compute_node_cpd(model, node_name, data, &options)?;
         model.set_cpd(node_name, cpd)?;
         Ok(())
     }
@@ -294,8 +311,19 @@ impl ParameterLearner {
         let is_complete = data.iter().all(|row| row.len() == model.nodes().len());
         if is_complete {
             let node_names: Vec<String> = model.nodes().iter().map(|&s| s.to_string()).collect();
-            for node_name in node_names {
-                Self::estimate_node(model, &node_name, data, options.clone())?;
+
+            // Each node's counts are computed from the same immutable model and
+            // the same data, so this is embarrassingly parallel. `par_iter`
+            // preserves order in the collected Vec, keeping the subsequent
+            // application — and therefore the result — deterministic.
+            let cpds: Vec<LutufiResult<crate::core::factor::ConditionalProbabilityTable>> =
+                node_names
+                    .par_iter()
+                    .map(|name| Self::compute_node_cpd(model, name, data, &options))
+                    .collect();
+
+            for (name, cpd) in node_names.iter().zip(cpds) {
+                model.set_cpd(name, cpd?)?;
             }
             Ok(())
         } else {
@@ -411,8 +439,8 @@ impl ParameterLearner {
                                 let assignment = expected_scope.assignment_from_flat(i)?;
                                 let mut consistent = true;
                                 for (ev_id, ev_val) in evidence.iter() {
-                                    if expected_scope.contains(&ev_id) {
-                                        let ev_var = get_var(model, &ev_id)?;
+                                    if expected_scope.contains(ev_id) {
+                                        let ev_var = get_var(model, ev_id)?;
                                         let val_idx = ev_var.domain().index_of(ev_val).ok_or_else(|| {
                                             LutufiError::ValueNotInDomain {
                                                 value: ev_val.to_string(),
@@ -420,7 +448,7 @@ impl ParameterLearner {
                                                 valid_values: format!("{:?}", ev_var.domain()),
                                             }
                                         })?;
-                                        if assignment.get_discrete(&ev_id)? != val_idx {
+                                        if assignment.get_discrete(ev_id)? != val_idx {
                                             consistent = false;
                                             break;
                                         }

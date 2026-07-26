@@ -14,8 +14,53 @@ use crate::core::{
     backend::ComputeBackend,
 };
 
-#[cfg(feature = "gpu")]
-use wgpu::util::DeviceExt;
+/// Identity of the physical device a [`WgpuBackend`] is running on.
+///
+/// Exposed because "is the GPU actually being used?" is otherwise unanswerable
+/// from outside the library. On laptops with switchable graphics, `wgpu` may
+/// select integrated graphics over the discrete card; and a `device_type` of
+/// `Cpu` means a software adapter was chosen, in which case the "GPU" backend is
+/// really a slow CPU backend and should not be used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpuAdapterInfo {
+    /// Device name as reported by the driver, e.g. `"NVIDIA GeForce MX250"`.
+    pub name: String,
+    /// Graphics API in use, e.g. `"Vulkan"`, `"Dx12"`, `"Gl"`.
+    pub backend: String,
+    /// One of `"DiscreteGpu"`, `"IntegratedGpu"`, `"VirtualGpu"`, `"Cpu"`, `"Other"`.
+    pub device_type: String,
+    /// PCI vendor ID.
+    pub vendor: u32,
+    /// PCI device ID.
+    pub device: u32,
+    /// Driver name and version, when the backend reports them.
+    pub driver: String,
+}
+
+impl GpuAdapterInfo {
+    /// Whether this is a real GPU rather than a software rasterizer.
+    ///
+    /// A `false` here explains the otherwise baffling combination of high CPU
+    /// use and zero GPU use while the "GPU backend" is active.
+    pub fn is_hardware(&self) -> bool {
+        self.device_type != "Cpu"
+    }
+
+    /// Whether this is a discrete GPU (as opposed to integrated or software).
+    pub fn is_discrete(&self) -> bool {
+        self.device_type == "DiscreteGpu"
+    }
+}
+
+impl std::fmt::Display for GpuAdapterInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} [{}, {}] vendor=0x{:04x} device=0x{:04x} driver={}",
+            self.name, self.backend, self.device_type, self.vendor, self.device, self.driver
+        )
+    }
+}
 
 /// GPU acceleration backend using wgpu compute shaders.
 pub struct WgpuBackend {
@@ -23,10 +68,18 @@ pub struct WgpuBackend {
     pub(crate) device: wgpu::Device,
     #[cfg(feature = "gpu")]
     pub(crate) queue: wgpu::Queue,
+    #[cfg(feature = "gpu")]
+    adapter_info: GpuAdapterInfo,
 }
 
 impl WgpuBackend {
     /// Create a new GPU backend by requesting a high-performance wgpu adapter.
+    ///
+    /// `PowerPreference::HighPerformance` asks for the discrete GPU on machines
+    /// with switchable graphics, but the driver is free to hand back integrated
+    /// graphics or even a software adapter. Inspect [`WgpuBackend::adapter_info`]
+    /// to see what was actually selected, or use
+    /// [`WgpuBackend::new_requiring_hardware`] to refuse a software fallback.
     #[cfg(feature = "gpu")]
     pub fn new() -> LutufiResult<Self> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
@@ -36,6 +89,20 @@ impl WgpuBackend {
         })).ok_or_else(|| LutufiError::InternalError {
             message: "Failed to find a suitable GPU adapter".to_string()
         })?;
+
+        let info = adapter.get_info();
+        let adapter_info = GpuAdapterInfo {
+            name: info.name.clone(),
+            backend: format!("{:?}", info.backend),
+            device_type: format!("{:?}", info.device_type),
+            vendor: info.vendor,
+            device: info.device,
+            driver: if info.driver_info.is_empty() {
+                info.driver.clone()
+            } else {
+                format!("{} {}", info.driver, info.driver_info)
+            },
+        };
 
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
@@ -47,7 +114,34 @@ impl WgpuBackend {
             None,
         )).map_err(|e| LutufiError::InternalError { message: e.to_string() })?;
 
-        Ok(WgpuBackend { device, queue })
+        Ok(WgpuBackend { device, queue, adapter_info })
+    }
+
+    /// Like [`WgpuBackend::new`], but fails rather than returning a backend
+    /// bound to a software adapter.
+    ///
+    /// A software adapter runs the "GPU" shaders on the CPU — usually slower
+    /// than the plain CPU kernels, and confusing to diagnose because the backend
+    /// reports itself as `"WGPU"` while no GPU activity is visible.
+    #[cfg(feature = "gpu")]
+    pub fn new_requiring_hardware() -> LutufiResult<Self> {
+        let backend = Self::new()?;
+        if !backend.adapter_info.is_hardware() {
+            return Err(LutufiError::InternalError {
+                message: format!(
+                    "Selected adapter is a software rasterizer ({}), not a GPU. \
+                     Shaders would run on the CPU.",
+                    backend.adapter_info
+                ),
+            });
+        }
+        Ok(backend)
+    }
+
+    /// Which physical device this backend is running on.
+    #[cfg(feature = "gpu")]
+    pub fn adapter_info(&self) -> &GpuAdapterInfo {
+        &self.adapter_info
     }
 
     /// Create a new GPU backend (fallback when the `gpu` feature is disabled).
@@ -56,6 +150,12 @@ impl WgpuBackend {
         Err(LutufiError::InternalError {
             message: "WgpuBackend requested but 'gpu' feature is not enabled".to_string()
         })
+    }
+
+    /// Create a hardware-only GPU backend (fallback when `gpu` is disabled).
+    #[cfg(not(feature = "gpu"))]
+    pub fn new_requiring_hardware() -> LutufiResult<Self> {
+        Self::new()
     }
 
     /// Run a WGSL compute shader with the given bind group layout and entries.
@@ -207,6 +307,11 @@ pub(crate) fn get_stride(sizes: &[usize], pos: usize) -> u32 {
 
 impl ComputeBackend for WgpuBackend {
     fn name(&self) -> &'static str { "WGPU" }
+
+    /// The shaders operate on `f32` buffers (see ADR-011).
+    fn precision(&self) -> crate::core::backend::Precision {
+        crate::core::backend::Precision::F32
+    }
 
     fn multiply(&self, a: &TabularFactor, b: &TabularFactor) -> LutufiResult<TabularFactor> {
         compute::gpu_multiply(self, a, b)

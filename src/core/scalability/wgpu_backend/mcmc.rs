@@ -51,13 +51,13 @@ pub(crate) fn gpu_mcmc_gibbs_probs(
     struct GibbsParamsRaw { domain_size: u32, num_factors: u32, _pad: u32 }
     let gparams = GibbsParamsRaw { domain_size: domain_size as u32, num_factors: factors.len() as u32, _pad: 0 };
     let gparam_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("GibbsParams"), contents: bytemuck::cast_slice(&[gparams]), usage: wgpu::BufferUsages::UNIFORM,
+        label: Some("GibbsParams"), contents: bytemuck::cast_slice(&[gparams]), usage: wgpu::BufferUsages::STORAGE,
     });
 
     backend.run_compute(
         shaders::MCMC_GIBBS_SHADER, "main",
         &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -68,7 +68,7 @@ pub(crate) fn gpu_mcmc_gibbs_probs(
             wgpu::BindGroupEntry { binding: 2, resource: meta_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 3, resource: res_buf.as_entire_binding() },
         ],
-        ((domain_size as u32 + 63) / 64, 1, 1),
+        ((domain_size as u32).div_ceil(64), 1, 1),
     )?;
 
     let res_f32 = backend.read_buffer_f32(&res_buf, domain_size)?;
@@ -181,7 +181,7 @@ pub(crate) fn gpu_mcmc_chain_step_parallel(
     }
 
     // RNG state: seed per chain
-    let mut rng_state: Vec<u32> = (0..num_chains as u32).collect();
+    let rng_state: Vec<u32> = (0..num_chains as u32).collect();
 
     // Create GPU buffers
     let chain_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -218,13 +218,13 @@ pub(crate) fn gpu_mcmc_chain_step_parallel(
     let sparam_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("ChainStepParams"),
         contents: bytemuck::cast_slice(&[sparams]),
-        usage: wgpu::BufferUsages::UNIFORM,
+        usage: wgpu::BufferUsages::STORAGE,
     });
 
     backend.run_compute(
         shaders::MCMC_CHAIN_STEP_SHADER, "main",
         &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -239,7 +239,7 @@ pub(crate) fn gpu_mcmc_chain_step_parallel(
             wgpu::BindGroupEntry { binding: 4, resource: log_prob_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 5, resource: rng_buf.as_entire_binding() },
         ],
-        ((num_chains as u32 + 63) / 64, 1, 1),
+        ((num_chains as u32).div_ceil(64), 1, 1),
     )?;
 
     // Read back results

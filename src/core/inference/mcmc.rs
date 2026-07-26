@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use rand::prelude::*;
+use rayon::prelude::*;
 use crate::core::{
     assignment::Assignment,
     error::{LutufiError, LutufiResult},
@@ -10,18 +11,15 @@ use crate::core::{
 
 /// MCMC algorithm variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum MCMCMethod {
     /// Gibbs Sampling (standard for discrete BNs).
+    #[default]
     Gibbs,
     /// Metropolis-Hastings (more general, supports continuous).
     MetropolisHastings,
 }
 
-impl Default for MCMCMethod {
-    fn default() -> Self {
-        MCMCMethod::Gibbs
-    }
-}
 
 /// Options for MCMC inference.
 #[derive(Debug, Clone)]
@@ -97,42 +95,72 @@ impl MCMCEngine {
         }
     }
 
+    /// Variable IDs in a fixed, process-independent order.
+    ///
+    /// The scan order of a Gibbs sweep changes the sample path, so it must not be
+    /// left to `HashMap` iteration: Rust randomizes that per process, which made
+    /// `MCMCOptions::seed` a false promise — the same seed produced different
+    /// results in different runs. Sorting by `VariableId` makes the seed mean what
+    /// it says.
+    fn scan_order(&self) -> Vec<VariableId> {
+        let mut ids: Vec<VariableId> = self.graph.variables.keys().copied().collect();
+        ids.sort();
+        ids
+    }
+
+    /// Seed for chain `index`, derived from the configured seed.
+    ///
+    /// Each chain gets an independent, reproducible stream, so chains can run in
+    /// any order or concurrently and still produce identical results. Deriving
+    /// rather than sharing one RNG is what makes parallel chains reproducible;
+    /// a single shared RNG would make the outcome depend on interleaving.
+    fn chain_seed(&self, index: usize) -> u64 {
+        match self.options.seed {
+            // Mixed with a large odd constant so nearby chain indices do not
+            // produce correlated streams.
+            Some(seed) => seed.wrapping_add((index as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)),
+            None => rand::random(),
+        }
+    }
+
+    /// Run all chains, in parallel, collecting them in chain order.
+    fn run_chains<F>(&self, run_one: F) -> LutufiResult<Vec<Vec<Assignment>>>
+    where
+        F: Fn(&Self, &mut StdRng) -> LutufiResult<Vec<Assignment>> + Sync,
+    {
+        // `into_par_iter().collect()` preserves index order, so chain `i` is
+        // always chain `i` regardless of which thread finished first.
+        (0..self.options.chains)
+            .into_par_iter()
+            .map(|index| {
+                let mut rng = StdRng::seed_from_u64(self.chain_seed(index));
+                run_one(self, &mut rng)
+            })
+            .collect()
+    }
+
     /// Run Gibbs sampling.
     pub fn gibbs_sample(&self, evidence: &Assignment) -> LutufiResult<MCMCResult> {
-        let mut all_chain_samples = Vec::new();
-        let mut rng = match self.options.seed {
-            Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_entropy(),
-        };
-
-        for _ in 0..self.options.chains {
-            let chain_samples = self.run_gibbs_chain(evidence, &mut rng)?;
-            all_chain_samples.push(chain_samples);
-        }
-
+        let all_chain_samples =
+            self.run_chains(|engine, rng| engine.run_gibbs_chain(evidence, rng))?;
         self.process_samples(all_chain_samples)
     }
 
     /// Run Metropolis-Hastings sampling.
     pub fn metropolis_hastings(&self, evidence: &Assignment) -> LutufiResult<MCMCResult> {
-        let mut all_chain_samples = Vec::new();
-        let mut rng = match self.options.seed {
-            Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_entropy(),
-        };
-
-        for _ in 0..self.options.chains {
-            let chain_samples = self.run_mh_chain(evidence, &mut rng)?;
-            all_chain_samples.push(chain_samples);
-        }
-
+        let all_chain_samples =
+            self.run_chains(|engine, rng| engine.run_mh_chain(evidence, rng))?;
         self.process_samples(all_chain_samples)
     }
 
     fn run_gibbs_chain(&self, evidence: &Assignment, rng: &mut StdRng) -> LutufiResult<Vec<Assignment>> {
+        let scan_order = self.scan_order();
         let mut current_state = evidence.clone();
-        for (&id, var) in &self.graph.variables {
+        for &id in &scan_order {
             if !evidence.contains(&id) {
+                let var = self.graph.variables.get(&id).ok_or_else(|| {
+                    LutufiError::VariableNotFound { name: id.to_string(), available: String::new() }
+                })?;
                 let size = var.domain().size().ok_or_else(|| LutufiError::InternalError {
                     message: "Variable domain size missing".to_string()
                 })?;
@@ -145,12 +173,12 @@ impl MCMCEngine {
         let total_iterations = self.options.burn_in + self.options.n_samples * self.options.thin;
 
         for i in 0..total_iterations {
-            for &var_id in self.graph.variables.keys() {
+            for &var_id in &scan_order {
                 if evidence.contains(&var_id) { continue; }
                 self.sample_variable_gibbs(var_id, &mut current_state, rng)?;
             }
 
-            if i >= self.options.burn_in && (i - self.options.burn_in) % self.options.thin == 0 {
+            if i >= self.options.burn_in && (i - self.options.burn_in).is_multiple_of(self.options.thin) {
                 samples.push(current_state.clone());
             }
         }
@@ -159,9 +187,13 @@ impl MCMCEngine {
     }
 
     fn run_mh_chain(&self, evidence: &Assignment, rng: &mut StdRng) -> LutufiResult<Vec<Assignment>> {
+        let scan_order = self.scan_order();
         let mut current_state = evidence.clone();
-        for (&id, var) in &self.graph.variables {
+        for &id in &scan_order {
             if !evidence.contains(&id) {
+                let var = self.graph.variables.get(&id).ok_or_else(|| {
+                    LutufiError::VariableNotFound { name: id.to_string(), available: String::new() }
+                })?;
                 let size = var.domain().size().ok_or_else(|| LutufiError::InternalError {
                     message: "Variable domain size missing".to_string()
                 })?;
@@ -174,12 +206,12 @@ impl MCMCEngine {
         let total_iterations = self.options.burn_in + self.options.n_samples * self.options.thin;
 
         for i in 0..total_iterations {
-            for &var_id in self.graph.variables.keys() {
+            for &var_id in &scan_order {
                 if evidence.contains(&var_id) { continue; }
                 self.sample_variable_mh(var_id, &mut current_state, rng)?;
             }
 
-            if i >= self.options.burn_in && (i - self.options.burn_in) % self.options.thin == 0 {
+            if i >= self.options.burn_in && (i - self.options.burn_in).is_multiple_of(self.options.thin) {
                 samples.push(current_state.clone());
             }
         }
@@ -294,7 +326,7 @@ impl MCMCEngine {
         let n_per_chain = all_chain_samples[0].len();
         let total_n = (n_chains * n_per_chain) as f64;
 
-        for &var_id in self.graph.variables.keys() {
+        for var_id in self.scan_order() {
             let var = self.graph.variables.get(&var_id).ok_or_else(|| LutufiError::VariableNotFound {
                 name: var_id.to_string(),
                 available: "".to_string()

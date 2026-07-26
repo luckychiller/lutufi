@@ -3,6 +3,7 @@
 //! Implements BIC, BDeu scoring and hill climbing search.
 
 use std::collections::HashMap;
+use rayon::prelude::*;
 use crate::core::{
     error::{LutufiError, LutufiResult},
     models::bayesian_network::BayesianNetwork,
@@ -101,84 +102,118 @@ impl ScoreBasedLearner {
                 let mut best_op = None;
 
                 let nodes: Vec<String> = current_model.nodes().iter().map(|&s| s.to_string()).collect();
+
+                // Phase A (serial, cheap): enumerate the legal moves. Legality
+                // depends on acyclicity, which is a property of the whole graph,
+                // so it is checked here against the single shared model.
+                //
+                // Each candidate carries the hypothetical parent sets its score
+                // depends on, so Phase B needs no access to a mutable graph.
+                let mut candidates: Vec<Candidate> = Vec::new();
                 for u_name in &nodes {
                     for v_name in &nodes {
                         if u_name == v_name { continue; }
-                        
+
                         let u_id = current_model.id_of(u_name)?;
                         let v_id = current_model.id_of(v_name)?;
+                        let edge_exists = current_model.graph.edges().contains(&(u_id, v_id));
 
-                        // Case 1: Add edge U -> V
-                        if !current_model.graph.edges().contains(&(u_id, v_id)) && 
-                           !forbidden_edges.contains(&(u_name.clone(), v_name.clone())) {
-                            
-                             if !self.would_create_cycle(&current_model, u_name, v_name)? {
-                                let old_v_score = local_scores[v_name];
-                                current_model.graph.add_edge(&u_id, &v_id, u_name, v_name)?;
-                                let new_v_score = self.local_score(&current_model, v_name, data)?;
-                                current_model.graph.remove_edge(&u_id, &v_id);
-                                
-                                let delta = new_v_score - old_v_score;
-                                if delta > best_delta {
-                                    best_delta = delta;
-                                    best_op = Some(StructureOp::AddEdge(u_name.clone(), v_name.clone()));
-                                }
-                            }
+                        // Case 1: add U -> V.
+                        if !edge_exists
+                            && !forbidden_edges.contains(&(u_name.clone(), v_name.clone()))
+                            && !self.would_create_cycle(&current_model, u_name, v_name)?
+                        {
+                            let mut v_parents = current_model.graph.parents(&v_id);
+                            v_parents.push(u_id);
+                            candidates.push(Candidate {
+                                op: StructureOp::Add(u_name.clone(), v_name.clone()),
+                                rescored: vec![(v_name.clone(), v_parents)],
+                            });
                         }
 
-                        if current_model.graph.edges().contains(&(u_id, v_id)) && 
-                           !required_edges.contains(&(u_name.clone(), v_name.clone())) {
-                            
-                            let old_v_score = local_scores[v_name];
+                        // Case 2: remove U -> V.
+                        if edge_exists
+                            && !required_edges.contains(&(u_name.clone(), v_name.clone()))
+                        {
+                            let v_parents: Vec<VariableId> = current_model.graph
+                                .parents(&v_id).into_iter().filter(|p| *p != u_id).collect();
+                            candidates.push(Candidate {
+                                op: StructureOp::Remove(u_name.clone(), v_name.clone()),
+                                rescored: vec![(v_name.clone(), v_parents)],
+                            });
+                        }
+
+                        // Case 3: reverse U -> V into V -> U. Acyclicity must be
+                        // judged with the original edge already gone, so the
+                        // graph is temporarily mutated and restored here — still
+                        // serial, still cheap, and no scoring happens inside.
+                        if edge_exists
+                            && !required_edges.contains(&(u_name.clone(), v_name.clone()))
+                            && !forbidden_edges.contains(&(v_name.clone(), u_name.clone()))
+                        {
                             current_model.graph.remove_edge(&u_id, &v_id);
-                            let new_v_score = self.local_score(&current_model, v_name, data)?;
+                            let reversal_is_acyclic =
+                                !self.would_create_cycle(&current_model, v_name, u_name)?;
                             current_model.graph.add_edge(&u_id, &v_id, u_name, v_name)?;
-                            
-                            let delta = new_v_score - old_v_score;
-                            if delta > best_delta {
-                                best_delta = delta;
-                                best_op = Some(StructureOp::RemoveEdge(u_name.clone(), v_name.clone()));
-                            }
-                        }
 
-                        if current_model.graph.edges().contains(&(u_id, v_id)) && 
-                           !required_edges.contains(&(u_name.clone(), v_name.clone())) &&
-                           !forbidden_edges.contains(&(v_name.clone(), u_name.clone())) {
-                            
-                            current_model.graph.remove_edge(&u_id, &v_id);
-                            if !self.would_create_cycle(&current_model, v_name, u_name)? {
-                                let old_u_score = local_scores[u_name];
-                                let old_v_score = local_scores[v_name];
-                                
-                                current_model.graph.add_edge(&v_id, &u_id, v_name, u_name)?;
-                                let new_u_score = self.local_score(&current_model, u_name, data)?;
-                                let new_v_score = self.local_score(&current_model, v_name, data)?;
-                                current_model.graph.remove_edge(&v_id, &u_id); // Backtrack
-                                
-                                let delta = (new_u_score + new_v_score) - (old_u_score + old_v_score);
-                                if delta > best_delta {
-                                    best_delta = delta;
-                                    best_op = Some(StructureOp::ReverseEdge(u_name.clone(), v_name.clone()));
-                                }
+                            if reversal_is_acyclic {
+                                let mut u_parents = current_model.graph.parents(&u_id);
+                                u_parents.push(v_id);
+                                let v_parents: Vec<VariableId> = current_model.graph
+                                    .parents(&v_id).into_iter().filter(|p| *p != u_id).collect();
+                                candidates.push(Candidate {
+                                    op: StructureOp::Reverse(u_name.clone(), v_name.clone()),
+                                    rescored: vec![
+                                        (u_name.clone(), u_parents),
+                                        (v_name.clone(), v_parents),
+                                    ],
+                                });
                             }
-                            current_model.graph.add_edge(&u_id, &v_id, u_name, v_name)?; // Restore
                         }
+                    }
+                }
+
+                // Phase B (parallel, expensive): score every candidate. Each
+                // scoring pass scans the dataset, which is what dominates the
+                // search; candidates are independent given the immutable model.
+                let scored: Vec<LutufiResult<f64>> = candidates
+                    .par_iter()
+                    .map(|candidate| {
+                        let mut delta = 0.0;
+                        for (node, parents) in &candidate.rescored {
+                            let old = local_scores[node];
+                            let new = self.local_score_with_parents(
+                                &current_model, node, parents, data)?;
+                            delta += new - old;
+                        }
+                        Ok(delta)
+                    })
+                    .collect();
+
+                // Phase C (serial): pick the best. Ties resolve to the earliest
+                // candidate in enumeration order, so the search path does not
+                // depend on thread scheduling.
+                for (candidate, delta) in candidates.into_iter().zip(scored) {
+                    let delta = delta?;
+                    if delta > best_delta {
+                        best_delta = delta;
+                        best_op = Some(candidate.op);
                     }
                 }
 
                 if let Some(op) = best_op {
                     match op {
-                        StructureOp::AddEdge(u, v) => {
+                        StructureOp::Add(u, v) => {
                             current_model.add_edge(&u, &v)?;
                             local_scores.insert(v.clone(), self.local_score(&current_model, &v, data)?);
                         }
-                        StructureOp::RemoveEdge(u, v) => {
+                        StructureOp::Remove(u, v) => {
                             let u_id = current_model.id_of(&u)?;
                             let v_id = current_model.id_of(&v)?;
                             current_model.graph.remove_edge(&u_id, &v_id);
                             local_scores.insert(v.clone(), self.local_score(&current_model, &v, data)?);
                         }
-                        StructureOp::ReverseEdge(u, v) => {
+                        StructureOp::Reverse(u, v) => {
                             let u_id = current_model.id_of(&u)?;
                             let v_id = current_model.id_of(&v)?;
                             current_model.graph.remove_edge(&u_id, &v_id);
@@ -246,8 +281,8 @@ impl ScoreBasedLearner {
                     let u_id = current_model.id_of(u)?;
                     let v_id = current_model.id_of(v)?;
 
-                    if !current_model.graph.edges().contains(&(u_id, v_id)) {
-                        if !self.would_create_cycle(&current_model, u, v)? {
+                    if !current_model.graph.edges().contains(&(u_id, v_id))
+                        && !self.would_create_cycle(&current_model, u, v)? {
                             let old_v_score = local_scores[v];
                             current_model.graph.add_edge(&u_id, &v_id, u, v)?;
                             let new_v_score = self.local_score(&current_model, v, data)?;
@@ -259,7 +294,6 @@ impl ScoreBasedLearner {
                                 best_edge = Some((u.clone(), v.clone()));
                             }
                         }
-                    }
                 }
             }
 
@@ -336,7 +370,25 @@ impl ScoreBasedLearner {
     ) -> LutufiResult<f64> {
         let child_id = model.id_of(node_name)?;
         let parents = model.graph.parents(&child_id);
-        
+        self.local_score_with_parents(model, node_name, &parents, data)
+    }
+
+    /// Score a node against a *hypothetical* parent set.
+    ///
+    /// Scoring a candidate edge does not require the edge to exist in the graph —
+    /// only that the parent set be known. Taking parents explicitly lets many
+    /// candidate moves be scored concurrently from one immutable model, instead
+    /// of each one mutating the shared graph and undoing it afterwards.
+    pub fn local_score_with_parents(
+        &self,
+        model: &BayesianNetwork,
+        node_name: &str,
+        parents: &[VariableId],
+        data: &[HashMap<String, String>],
+    ) -> LutufiResult<f64> {
+        let child_id = model.id_of(node_name)?;
+        let parents = parents.to_vec();
+
         let counts = self.get_counts(model, node_name, &parents, data)?;
         let n_total = data.len() as f64;
         
@@ -505,7 +557,17 @@ impl ScoreBasedLearner {
 }
 
 enum StructureOp {
-    AddEdge(String, String),
-    RemoveEdge(String, String),
-    ReverseEdge(String, String),
+    Add(String, String),
+    Remove(String, String),
+    Reverse(String, String),
+}
+
+/// A legal hill-climbing move together with everything needed to score it.
+///
+/// `rescored` lists the nodes whose local score the move changes, each paired
+/// with the parent set it would have afterwards. Carrying the hypothetical
+/// parents here is what lets scoring run against an immutable model.
+struct Candidate {
+    op: StructureOp,
+    rescored: Vec<(String, Vec<VariableId>)>,
 }

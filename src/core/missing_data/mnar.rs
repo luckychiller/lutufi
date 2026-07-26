@@ -302,7 +302,7 @@ impl MnarModel {
                 for &i in &complete_rows {
                     let x = data[i][idx];
                     let logit = beta * x;
-                    let logit_clamped = if logit > 20.0 { 20.0 } else if logit < -20.0 { -20.0 } else { logit };
+                    let logit_clamped = logit.clamp(-20.0, 20.0);
                     let p = 1.0 / (1.0 + (-logit_clamped).exp());
                     grad += (1.0 - p) * x;
                     hess += -p * (1.0 - p) * x * x;

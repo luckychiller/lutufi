@@ -19,12 +19,11 @@ impl MeeksRuleApplier {
             for (a, b) in current_edges {
                 if Self::is_oriented(orientations, &a, &b) == Some(true) {
                     for c in skeleton.adjacency.get(&b).unwrap_or(&std::collections::HashSet::new()).clone() {
-                        if c != a && !skeleton.adjacency.get(&a).unwrap_or(&std::collections::HashSet::new()).contains(&c) {
-                            if Self::is_undirected(orientations, &b, &c) {
+                        if c != a && !skeleton.adjacency.get(&a).unwrap_or(&std::collections::HashSet::new()).contains(&c)
+                            && Self::is_undirected(orientations, &b, &c) {
                                 Self::set_orientation(orientations, &b, &c, EdgeOrientation::Directed);
                                 changed = true;
                             }
-                        }
                     }
                 }
             }

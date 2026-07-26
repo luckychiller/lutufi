@@ -19,6 +19,12 @@ pub struct FactorGraph {
     pub var_to_factors: HashMap<VariableId, Vec<usize>>,
 }
 
+impl Default for FactorGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FactorGraph {
     /// Create a new, empty Factor Graph.
     pub fn new() -> Self {
@@ -56,14 +62,14 @@ impl FactorGraph {
     pub fn add_variable(&mut self, var: Variable) {
         let id = var.id();
         self.variables.insert(id, var);
-        self.var_to_factors.entry(id).or_insert_with(Vec::new);
+        self.var_to_factors.entry(id).or_default();
     }
 
     /// Add a factor to the Factor Graph.
     pub fn add_factor(&mut self, factor: TabularFactor) {
         let idx = self.factors.len();
         for &var_id in factor.scope().variable_ids() {
-            self.var_to_factors.entry(var_id).or_insert_with(Vec::new).push(idx);
+            self.var_to_factors.entry(var_id).or_default().push(idx);
         }
         self.factors.push(factor);
     }

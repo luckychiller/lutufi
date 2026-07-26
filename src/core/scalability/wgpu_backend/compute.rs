@@ -1,9 +1,13 @@
 use super::{WgpuBackend};
 #[cfg(feature = "gpu")]
 use super::{
+    shaders,
     shaders::{GpuFactorParams, GpuMarginalizeParams},
     factor_to_f32, get_strides, get_stride,
 };
+
+#[cfg(feature = "gpu")]
+use crate::core::factor::Scope;
 
 use crate::core::{
     error::{LutufiError, LutufiResult},
@@ -14,6 +18,24 @@ use crate::core::{
 #[cfg(feature = "gpu")]
 use wgpu::util::DeviceExt;
 
+/// Widest scope the shaders can address, set by the `[u32; 8]` stride and map
+/// arrays in [`GpuFactorParams`] / [`GpuMarginalizeParams`].
+#[cfg(feature = "gpu")]
+pub(crate) const GPU_MAX_SCOPE_VARS: usize = 8;
+
+/// Result size at or above which a dispatch is worth its buffer upload, kernel
+/// launch, and readback.
+///
+/// This is deliberately compared against the size of the **result**, not the
+/// operands. Comparing against the operands made the GPU path unreachable for
+/// binary variables: the widest expressible union scope is 8 variables, which is
+/// only 2^8 = 256 entries, so both operands were always under any threshold above
+/// 256 and every product silently fell back to the CPU. The result is the
+/// quantity the kernel actually computes, so it is the quantity that decides
+/// whether dispatching is worthwhile.
+#[cfg(feature = "gpu")]
+pub(crate) const GPU_MIN_RESULT_ENTRIES: usize = 512;
+
 #[cfg(feature = "gpu")]
 pub(crate) fn gpu_multiply(
     backend: &WgpuBackend,
@@ -22,10 +44,6 @@ pub(crate) fn gpu_multiply(
 ) -> LutufiResult<TabularFactor> {
     let a_scope = a.scope();
     let b_scope = b.scope();
-
-    if a_scope.num_entries() < 512 && b_scope.num_entries() < 512 {
-        return a.multiply_internal(b);
-    }
 
     let mut vars: std::collections::BTreeMap<VariableId, usize> = std::collections::BTreeMap::new();
     for (i, &vid) in a_scope.variable_ids().iter().enumerate() {
@@ -43,13 +61,22 @@ pub(crate) fn gpu_multiply(
         }
     }
 
-    if vars.len() > 8 {
-        return Err(LutufiError::InternalError { message: "WGPU supports max 8 variables".to_string() });
+    // The shaders index through fixed-size `[u32; 8]` stride/map arrays, so a
+    // union scope wider than 8 variables cannot be expressed. That is a property
+    // of this backend, not an error in the caller's model — fall back to the CPU
+    // kernel rather than failing a query that is perfectly well-formed.
+    if vars.len() > GPU_MAX_SCOPE_VARS {
+        return a.multiply_internal(b);
     }
 
     let new_vids: Vec<VariableId> = vars.keys().copied().collect();
     let new_sizes: Vec<usize> = vars.values().copied().collect();
     let res_scope = Scope::from_ids_and_sizes(new_vids, new_sizes);
+
+    // Too small to be worth a round trip to the device.
+    if res_scope.num_entries() < GPU_MIN_RESULT_ENTRIES {
+        return a.multiply_internal(b);
+    }
 
     let mut p = GpuFactorParams {
         num_entries: res_scope.num_entries() as u32,
@@ -84,13 +111,13 @@ pub(crate) fn gpu_multiply(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false,
     });
     let param_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("P"), contents: bytemuck::cast_slice(&[p]), usage: wgpu::BufferUsages::UNIFORM,
+        label: Some("P"), contents: bytemuck::cast_slice(&[p]), usage: wgpu::BufferUsages::STORAGE,
     });
 
     backend.run_compute(
         shaders::MULTIPLY_SHADER, "main",
         &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -101,7 +128,7 @@ pub(crate) fn gpu_multiply(
             wgpu::BindGroupEntry { binding: 2, resource: b_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 3, resource: res_buf.as_entire_binding() },
         ],
-        ((res_scope.num_entries() as u32 + 63) / 64, 1, 1),
+        ((res_scope.num_entries() as u32).div_ceil(64), 1, 1),
     )?;
 
     let res_f32 = backend.read_buffer_f32(&res_buf, res_scope.num_entries())?;
@@ -116,7 +143,11 @@ pub(crate) fn gpu_marginalize(
     variables: &[VariableId],
 ) -> LutufiResult<TabularFactor> {
     let a_scope = a.scope();
-    if a_scope.num_entries() < 1024 { return a.marginalize_internal(variables); }
+    // Marginalization reads the whole input table, so the input size is the right
+    // measure of the work involved (unlike the product, where it is the output).
+    if a_scope.num_entries() < GPU_MIN_RESULT_ENTRIES * 2 {
+        return a.marginalize_internal(variables);
+    }
 
     let target: std::collections::HashSet<_> = variables.iter().collect();
     let mut remain_v = Vec::new();
@@ -133,8 +164,10 @@ pub(crate) fn gpu_marginalize(
     }
 
     if remain_v.len() == a_scope.len() { return Ok(a.clone()); }
-    if remain_v.len() > 8 || sum_v.len() > 8 {
-        return Err(LutufiError::InternalError { message: "WGPU supports max 8 variables".to_string() });
+    // Beyond the shaders' addressable width, fall back rather than fail: the
+    // query is well-formed, this backend just cannot express it.
+    if remain_v.len() > GPU_MAX_SCOPE_VARS || sum_v.len() > GPU_MAX_SCOPE_VARS {
+        return a.marginalize_internal(variables);
     }
 
     let res_scope = Scope::from_ids_and_sizes(remain_v, remain_s);
@@ -174,13 +207,13 @@ pub(crate) fn gpu_marginalize(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false,
     });
     let param_buf = backend.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("P"), contents: bytemuck::cast_slice(&[p]), usage: wgpu::BufferUsages::UNIFORM,
+        label: Some("P"), contents: bytemuck::cast_slice(&[p]), usage: wgpu::BufferUsages::STORAGE,
     });
 
     backend.run_compute(
         shaders::MARGINALIZE_SHADER, "main",
         &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ],
@@ -189,7 +222,7 @@ pub(crate) fn gpu_marginalize(
             wgpu::BindGroupEntry { binding: 1, resource: a_buf.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 2, resource: res_buf.as_entire_binding() },
         ],
-        ((res_scope.num_entries() as u32 + 63) / 64, 1, 1),
+        ((res_scope.num_entries() as u32).div_ceil(64), 1, 1),
     )?;
 
     let res_f32 = backend.read_buffer_f32(&res_buf, res_scope.num_entries())?;
@@ -205,31 +238,27 @@ pub(crate) fn gpu_normalize(
     factor.normalize_internal();
 }
 
+/// Multiply many factor pairs.
+///
+/// Currently dispatches each pair as its own GPU submission. A single fused
+/// dispatch over all pairs is a future optimization; the sequential form is kept
+/// because it is correct and because per-pair dispatch already amortizes well for
+/// the large factors that reach the GPU path at all.
 #[cfg(feature = "gpu")]
 pub(crate) fn gpu_batch_multiply(
     backend: &WgpuBackend,
     pairs: &[(TabularFactor, TabularFactor)],
 ) -> LutufiResult<Vec<TabularFactor>> {
-    if pairs.is_empty() { return Ok(Vec::new()); }
-    if pairs.len() == 1 {
-        return Ok(vec![backend.multiply(&pairs[0].0, &pairs[0].1)?]);
-    }
-    if pairs.len() < 4 {
-        return pairs.iter().map(|(a, b)| backend.multiply(a, b)).collect();
-    }
-    pairs.iter().map(|(a, b)| backend.multiply(a, b)).collect()
+    pairs.iter().map(|(a, b)| gpu_multiply(backend, a, b)).collect()
 }
 
+/// Marginalize many factors. See [`gpu_batch_multiply`] on batching.
 #[cfg(feature = "gpu")]
 pub(crate) fn gpu_batch_marginalize(
     backend: &WgpuBackend,
     factors: &[(TabularFactor, Vec<VariableId>)],
 ) -> LutufiResult<Vec<TabularFactor>> {
-    if factors.is_empty() { return Ok(Vec::new()); }
-    if factors.len() < 4 {
-        return factors.iter().map(|(f, v)| backend.marginalize(f, v)).collect();
-    }
-    factors.iter().map(|(f, v)| backend.marginalize(f, v)).collect()
+    factors.iter().map(|(f, v)| gpu_marginalize(backend, f, v)).collect()
 }
 
 // Non-GPU fallbacks (used when feature is disabled, called from mod.rs)

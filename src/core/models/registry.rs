@@ -89,6 +89,11 @@ impl NetworkRegistry {
         self.variables.len()
     }
 
+    /// Whether the registry holds no variables.
+    pub fn is_empty(&self) -> bool {
+        self.variables.is_empty()
+    }
+
     /// Check whether a variable with the given ID exists.
     pub fn contains_id(&self, id: &VariableId) -> bool {
         self.variables.contains_key(id)

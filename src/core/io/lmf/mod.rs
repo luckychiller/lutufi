@@ -1,12 +1,15 @@
 /// LMF type definitions (document structure, metadata, CPDs, etc.).
 pub mod types;
-/// Conversion between [`BayesianNetwork`] and [`LmfDocument`].
+/// Conversion between [`BayesianNetwork`](crate::core::models::bayesian_network::BayesianNetwork)
+/// and [`LmfDocument`].
 pub mod convert;
 /// Serialization, deserialization, and verification of LMF documents.
 pub mod io;
 /// Format-version migration for LMF documents.
 pub mod migration;
-/// Extension methods on [`BayesianNetwork`] for LMF save/load.
+/// Extension methods on
+/// [`BayesianNetwork`](crate::core::models::bayesian_network::BayesianNetwork)
+/// for LMF save/load.
 pub mod network_ext;
 /// Tests for LMF functionality.
 pub mod tests;

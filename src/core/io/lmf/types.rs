@@ -41,6 +41,12 @@ pub struct LmfGraph {
     pub variables: Vec<LmfVariable>,
     /// Directed edges stored as `[parent, child]` pairs.
     pub edges: Vec<[String; 2]>,
+    /// Whether the edges represent causal mechanisms (set via
+    /// `BayesianNetwork::mark_as_causal()`), gating `do()`/identification
+    /// queries. Defaults to `false` so documents written before this field
+    /// existed still deserialize correctly.
+    #[serde(default)]
+    pub is_causal: bool,
 }
 
 /// A named variable with an associated domain.
@@ -206,9 +212,10 @@ pub struct VerifyCheck {
 
 /// Reshape a flat probability table into a 2-D matrix (child-state × parent-config).
 ///
-/// The flat table is stored child-innermost (idx = parent_config * child_size
-/// + child_state), and `ConditionalProbabilityTable::from_values` expects one
-/// row per child state and one column per parent configuration.
+/// The flat table is stored child-innermost, so that
+/// `idx = parent_config * child_size + child_state`, while
+/// `ConditionalProbabilityTable::from_values` expects one row per child state
+/// and one column per parent configuration.
 pub fn flatten_to_2d(values: &[f64], child_size: usize, parent_configs: usize) -> Vec<Vec<f64>> {
     let mut matrix = vec![vec![0.0f64; parent_configs.max(1)]; child_size];
     for pc in 0..parent_configs.max(1) {

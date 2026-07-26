@@ -96,12 +96,73 @@ pub struct InferenceResult {
     pub computation_time: Duration,
     /// Algorithm-specific diagnostics.
     pub diagnostics: Diagnostics,
+    /// State names per variable, in index order, when the caller supplied them.
+    ///
+    /// A `TabularFactor` carries only variable IDs and domain *sizes*, so a
+    /// result is not self-describing on its own: index 0 of a distribution is
+    /// just index 0. Anything rendering a result for humans — CSV export, plots,
+    /// `marginal_prob` lookups by name — needs the labels, and inventing them
+    /// (as the CSV writer previously did, assuming `false`/`true` for binary
+    /// variables) silently corrupts output for every model that names its states
+    /// otherwise.
+    ///
+    /// Empty when the producing engine did not have access to the model's
+    /// domains; consumers must fall back to indices rather than guess.
+    #[doc(alias = "labels")]
+    pub state_names: HashMap<String, Vec<String>>,
+}
+
+/// Collect the state labels of `variables` from the model, in index order.
+///
+/// `Domain::Binary` reports no explicit states, so it is rendered with the
+/// canonical `false`/`true` labels — the same convention the rest of the library
+/// uses for that domain type, and correct here because `Binary` really does mean
+/// those two states. Named binary domains are `Domain::Discrete` and keep their
+/// own labels.
+pub fn collect_state_names(
+    model: &crate::core::models::bayesian_network::BayesianNetwork,
+    variables: &[&str],
+) -> HashMap<String, Vec<String>> {
+    let mut names = HashMap::new();
+    for &var_name in variables {
+        let Ok(id) = model.id_of(var_name) else { continue };
+        let Some(var) = model.variables().get(&id) else { continue };
+        let labels = match var.domain() {
+            crate::core::domain::Domain::Binary => {
+                vec!["false".to_string(), "true".to_string()]
+            }
+            domain => match domain.states() {
+                Some(states) => states.to_vec(),
+                None => continue,
+            },
+        };
+        names.insert(var_name.to_string(), labels);
+    }
+    names
 }
 
 impl InferenceResult {
+    /// State labels for `variable`, in index order, if they are known.
+    pub fn states_of(&self, variable: &str) -> Option<&[String]> {
+        self.state_names.get(variable).map(|v| v.as_slice())
+    }
+
+    /// The label for state `index` of `variable`, falling back to the index
+    /// rendered as a string when labels are unavailable.
+    ///
+    /// Never guesses: an unlabelled binary variable renders as `"0"`/`"1"`, not
+    /// as `"false"`/`"true"`, because those are only correct by coincidence.
+    pub fn state_label(&self, variable: &str, index: usize) -> String {
+        self.state_names
+            .get(variable)
+            .and_then(|names| names.get(index))
+            .cloned()
+            .unwrap_or_else(|| index.to_string())
+    }
+
     /// Get the marginal probability of a specific value for a variable.
     /// For a univariate factor, the i-th index corresponds to the i-th state.
-    /// Supports lookup by state name ("true") or by position index ("0", "1").
+    /// Supports lookup by state name or by position index ("0", "1").
     pub fn marginal_prob(&self, variable: &str, value: &str) -> LutufiResult<f64> {
         let factor = self.distributions.get(variable).ok_or_else(|| {
             crate::core::error::LutufiError::VariableNotFound {
@@ -111,7 +172,16 @@ impl InferenceResult {
         })?;
         let scope = factor.scope();
 
-        // Map known state names to their index position
+        // Prefer the model's own labels when the engine recorded them. The
+        // `false`/`true` fallback below is a guess that happens to be right for
+        // some binary encodings and wrong for others ("no"/"yes", "F"/"T",
+        // "absent"/"present"), so it must never take precedence over real labels.
+        if let Some(names) = self.state_names.get(variable) {
+            if let Some(idx) = names.iter().position(|n| n == value) {
+                return Ok(factor.value_at(idx));
+            }
+        }
+
         let idx = match value {
             "false" | "False" => 0,
             "true" | "True" => 1,

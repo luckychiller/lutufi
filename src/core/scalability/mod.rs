@@ -35,6 +35,6 @@ pub use csi::ContextSpecificIndependence;
 pub use parallel_inference::ParallelLBPEngine;
 pub use lazy_evaluation::{LazyFactor, LazyFactorGraph};
 pub use memory_mapped::MemoryMappedFactorStore;
-pub use wgpu_backend::WgpuBackend;
+pub use wgpu_backend::{GpuAdapterInfo, WgpuBackend};
 pub use chunked_ve::ChunkedVariableElimination;
 pub use streaming::StreamingDBNEngine;

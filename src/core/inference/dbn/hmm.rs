@@ -3,6 +3,15 @@ use crate::core::{
     factor::log_sum_exp,
 };
 
+/// Baum-Welch state-occupancy posteriors, indexed `[time][state][0]`.
+///
+/// The trailing singleton axis keeps the shape uniform with [`Xi`] so both can be
+/// consumed by the same M-step accumulation loop.
+type Gamma = Vec<Vec<Vec<f64>>>;
+
+/// Baum-Welch state-transition posteriors, indexed `[time][from][to][0]`.
+type Xi = Vec<Vec<Vec<Vec<f64>>>>;
+
 /// Hidden Markov Model engine with exact inference algorithms.
 pub struct HMMEngine {
     /// Number of hidden states in the model.
@@ -194,7 +203,7 @@ impl HMMEngine {
         Ok(prev_ll)
     }
 
-    fn e_step(&self, observations: &[usize]) -> LutufiResult<(Vec<Vec<Vec<f64>>>, Vec<Vec<Vec<Vec<f64>>>>)> {
+    fn e_step(&self, observations: &[usize]) -> LutufiResult<(Gamma, Xi)> {
         let t = observations.len();
         let (gamma_prob, _) = self.forward_backward(observations)?;
 

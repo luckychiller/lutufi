@@ -194,12 +194,11 @@ impl ConstraintBasedLearner {
                         let (mark_b_c, _mark_c_b) = pag.get_edge_marks(&b, c);
                         let a_adj_c = pag.has_edge(a, c);
 
-                        if mark_a_b == PagEdgeMark::Arrow && !a_adj_c {
-                            if mark_b_c != PagEdgeMark::Tail {
+                        if mark_a_b == PagEdgeMark::Arrow && !a_adj_c
+                            && mark_b_c != PagEdgeMark::Tail {
                                 pag.set_edge(&b, c, PagEdgeMark::Arrow, PagEdgeMark::Tail);
                                 changed = true;
                             }
-                        }
                     }
                 }
             }
@@ -230,12 +229,10 @@ impl ConstraintBasedLearner {
 
                     if mark_b_a == PagEdgeMark::Arrow && mark_b_c == PagEdgeMark::Arrow
                         && !pag.has_edge(a, c)
-                    {
-                        if mark_a_b == PagEdgeMark::Circle {
+                        && mark_a_b == PagEdgeMark::Circle {
                             pag.set_edge(a, &b, PagEdgeMark::Arrow, PagEdgeMark::Arrow);
                             changed = true;
                         }
-                    }
                 }
             }
 

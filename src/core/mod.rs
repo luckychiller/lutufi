@@ -38,6 +38,9 @@ pub mod numerics;
 /// Module for scalability features (Phase 10)
 pub mod scalability;
 
+/// Adaptive structure: policy and contracts for automatic node discovery and retirement.
+pub mod structure;
+
 /// Re-export commonly used types
 pub use models::*;
 pub use representation::*;

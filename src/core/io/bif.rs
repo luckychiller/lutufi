@@ -60,7 +60,7 @@ impl BifFormat {
         }
 
         let order = network.topological_order().unwrap_or_else(|_| {
-            node_names.iter().map(|s| *s).collect()
+            node_names.to_vec()
         });
         for var_name in &order {
             let cpt = match network.cpd(var_name) {
@@ -249,7 +249,7 @@ impl BifFormat {
                     line
                 };
                 let nums: Vec<f64> = numbers_part
-                    .split(|c: char| c == ',' || c == ';')
+                    .split([',', ';'])
                     .filter_map(|s| {
                         let trimmed = s.trim();
                         if trimmed.is_empty() {
@@ -303,15 +303,14 @@ impl BifFormat {
 
         for (child, parents, table) in &conditional_tables {
             for parent in parents {
-                if network.id_of(parent).is_ok() && network.id_of(child).is_ok() {
-                    if !network
+                if network.id_of(parent).is_ok() && network.id_of(child).is_ok()
+                    && !network
                         .edges()
                         .iter()
                         .any(|(f, t)| f == parent && t == child)
                     {
                         let _ = network.add_edge(parent, child);
                     }
-                }
             }
 
             if network.id_of(child).is_err() {

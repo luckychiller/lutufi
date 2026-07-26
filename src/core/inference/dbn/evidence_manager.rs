@@ -108,7 +108,7 @@ impl EvidenceManager {
     fn extract_marginals(&self, factor: &TabularFactor, query: &[&str]) -> HashMap<String, TabularFactor> {
         let mut result = HashMap::new();
         let scope = factor.scope();
-        for (_i, &var_id) in scope.variable_ids().iter().enumerate() {
+        for &var_id in scope.variable_ids().iter() {
             if let Some(var) = self.model.variables().get(&var_id) {
                 if query.contains(&var.name()) {
                     let mut marginal = factor.clone();

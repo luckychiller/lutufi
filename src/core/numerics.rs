@@ -20,7 +20,7 @@ pub fn approx_eq(a: f64, b: f64, tolerance: f64) -> bool {
 
 /// Returns `true` if `p` is a valid probability in `[0, 1]` within tolerance.
 pub fn is_valid_probability(p: f64) -> bool {
-    p >= 0.0 && p <= 1.0 + PROBABILITY_TOLERANCE
+    (0.0..=1.0 + PROBABILITY_TOLERANCE).contains(&p)
 }
 
 /// Numerically stable softmax: computes `exp(x_i) / sum(exp(x_j))`.

@@ -12,7 +12,7 @@ use crate::core::{
 use std::collections::HashMap;
 use std::time::Instant;
 
-use super::strategy::{Algorithm, Diagnostics, InferenceResult, InferenceStrategy};
+use super::strategy::{collect_state_names, Algorithm, Diagnostics, InferenceResult, InferenceStrategy};
 use super::{junction_tree, lbp, mcmc, variational, variable_elimination};
 
 /// Variable Elimination Strategy - Exact inference for general DAGs.
@@ -60,6 +60,7 @@ impl InferenceStrategy for VariableEliminationStrategy {
 
         Ok(InferenceResult {
             variables: variables.iter().map(|&s| s.to_string()).collect(),
+            state_names: collect_state_names(model, variables),
             distributions,
             joint_factor: Some(joint),
             log_z,
@@ -106,6 +107,7 @@ impl InferenceStrategy for JunctionTreeStrategy {
 
         Ok(InferenceResult {
             variables: variables.iter().map(|&s| s.to_string()).collect(),
+            state_names: collect_state_names(model, variables),
             distributions,
             joint_factor: None,
             log_z: 0.0,
@@ -163,6 +165,7 @@ impl InferenceStrategy for LBPStrategy {
 
         Ok(InferenceResult {
             variables: variables.iter().map(|&s| s.to_string()).collect(),
+            state_names: collect_state_names(model, variables),
             distributions,
             joint_factor: None,
             log_z: 0.0,
@@ -217,6 +220,7 @@ impl InferenceStrategy for MCMCStrategy {
 
         Ok(InferenceResult {
             variables: variables.iter().map(|&s| s.to_string()).collect(),
+            state_names: collect_state_names(model, variables),
             distributions,
             joint_factor: None,
             log_z: 0.0,
@@ -272,6 +276,7 @@ impl InferenceStrategy for VariationalStrategy {
 
         Ok(InferenceResult {
             variables: variables.iter().map(|&s| s.to_string()).collect(),
+            state_names: collect_state_names(model, variables),
             distributions,
             joint_factor: None,
             log_z: 0.0,
